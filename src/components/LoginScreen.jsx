@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import HeaderLogo from './HeaderLogo';
 import { Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
-import { signInNutricionista } from '../lib/neon';
+import { signInUser } from '../lib/neon';
 
-export default function LoginScreen({ onNavigateRegister, onLoginSuccess }) {
+export default function LoginScreen({ onNavigateRegister, onNavigateForgotPassword, onLoginSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -21,7 +21,7 @@ export default function LoginScreen({ onNavigateRegister, onLoginSuccess }) {
 
     try {
       setLoading(true);
-      const session = await signInNutricionista({ email, password });
+      const session = await signInUser({ email, password });
       onLoginSuccess(session);
     } catch (err) {
       setError(err.message || 'Erro ao efetuar login. Tente novamente.');
@@ -37,7 +37,7 @@ export default function LoginScreen({ onNavigateRegister, onLoginSuccess }) {
       <div className="auth-card">
         <div className="auth-card-header">
           <h2 className="auth-card-title">Acesse sua Conta</h2>
-          <p className="auth-card-subtitle">Entre com suas credenciais de nutricionista</p>
+          <p className="auth-card-subtitle">Área de acesso para nutricionistas e pacientes</p>
         </div>
 
         {error && (
@@ -49,7 +49,7 @@ export default function LoginScreen({ onNavigateRegister, onLoginSuccess }) {
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label className="form-label" htmlFor="login-email">Email profissional</label>
+            <label className="form-label" htmlFor="login-email">Seu email cadastrado</label>
             <div className="input-wrapper">
               <span className="input-icon">
                 <Mail size={18} />
@@ -58,7 +58,7 @@ export default function LoginScreen({ onNavigateRegister, onLoginSuccess }) {
                 id="login-email"
                 type="email"
                 className="form-input"
-                placeholder="seu.email@nutrirodrigues.com"
+                placeholder="seu.email@exemplo.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -68,7 +68,16 @@ export default function LoginScreen({ onNavigateRegister, onLoginSuccess }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="login-password">Senha</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label className="form-label" htmlFor="login-password" style={{ margin: 0 }}>Senha</label>
+              <button
+                type="button"
+                className="forgot-password-link"
+                onClick={onNavigateForgotPassword}
+              >
+                Esqueceu a senha?
+              </button>
+            </div>
             <div className="input-wrapper">
               <span className="input-icon">
                 <Lock size={18} />
@@ -102,7 +111,7 @@ export default function LoginScreen({ onNavigateRegister, onLoginSuccess }) {
             {loading ? (
               <>
                 <span className="spinner"></span>
-                <span>Entrando...</span>
+                <span>Entrando no sistema...</span>
               </>
             ) : (
               <span>Entrar</span>
