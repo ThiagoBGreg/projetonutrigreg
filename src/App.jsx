@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import LoginScreen from './components/LoginScreen';
 import RegisterScreen from './components/RegisterScreen';
 import Dashboard from './components/Dashboard';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { getActiveSession } from './lib/neon';
 
 export default function App() {
@@ -52,7 +53,7 @@ export default function App() {
         backgroundColor: '#f8fafc',
         fontFamily: "'Outfit', sans-serif"
       }}>
-        <div style={{ textCenter: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
           <div className="spinner" style={{ width: '32px', height: '32px', borderTopColor: '#10b981', borderColor: 'rgba(16,185,129,0.2)' }}></div>
           <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Carregando <strong>Nutri Rodrigues</strong>...</p>
         </div>
@@ -60,23 +61,23 @@ export default function App() {
     );
   }
 
-  if (screen === 'dashboard' && session) {
-    return <Dashboard user={session.user} onLogout={handleLogout} />;
-  }
-
-  if (screen === 'register') {
-    return (
-      <RegisterScreen
-        onNavigateLogin={() => setScreen('login')}
-        onRegisterSuccess={handleRegisterSuccess}
-      />
-    );
-  }
-
   return (
-    <LoginScreen
-      onNavigateRegister={() => setScreen('register')}
-      onLoginSuccess={handleLoginSuccess}
-    />
+    <>
+      <PWAInstallPrompt />
+
+      {screen === 'dashboard' && session ? (
+        <Dashboard user={session.user} onLogout={handleLogout} />
+      ) : screen === 'register' ? (
+        <RegisterScreen
+          onNavigateLogin={() => setScreen('login')}
+          onRegisterSuccess={handleRegisterSuccess}
+        />
+      ) : (
+        <LoginScreen
+          onNavigateRegister={() => setScreen('register')}
+          onLoginSuccess={handleLoginSuccess}
+        />
+      )}
+    </>
   );
 }
