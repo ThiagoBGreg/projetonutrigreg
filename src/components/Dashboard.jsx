@@ -51,7 +51,16 @@ export default function Dashboard({ user, onLogout }) {
 
   return (
     <div className="dashboard-layout-fixed">
-      {/* Menu Lateral Fixo (Sidebar) */}
+      {/* Cabeçalho exclusivo para Telas Mobile */}
+      <header className="dashboard-mobile-header">
+        <HeaderLogo />
+        <button type="button" className="btn-mobile-logout" onClick={handleLogout} title="Sair do sistema">
+          <LogOut size={18} />
+          <span>Sair</span>
+        </button>
+      </header>
+
+      {/* Menu Lateral Fixo (Sidebar no Desktop / Barra Inferior no Mobile) */}
       <aside className="dashboard-sidebar">
         <div className="sidebar-top">
           <div className="sidebar-logo-wrapper">

@@ -325,3 +325,27 @@ export async function getPacientesList(nutriId) {
     { id: 104, nome: 'Lucas Mendes Ferreira', email: 'lucas@exemplo.com', telefone: '(11) 95432-1098', objetivo: 'Nutrição Esportiva' }
   ];
 }
+
+/**
+ * Fetch List of Nutritionists for Patient registration dropdown
+ */
+export async function getNutricionistasList() {
+  try {
+    if (sql) {
+      await initDatabaseTables();
+      const rows = await sql`SELECT id, nome, email FROM public.nutricionistas ORDER BY nome ASC`;
+      if (rows && rows.length > 0) return rows;
+    }
+  } catch (e) {
+    console.warn('Erro ao buscar lista de nutricionistas:', e);
+  }
+  return [
+    { id: '1', nome: 'Dra. Ana Maria (Nutrição Clínica)' },
+    { id: '2', nome: 'Dr. Gregory House (Nutrição Esportiva)' }
+  ];
+}
+
+// Export aliases for compatibility
+export { signInNutricionista as signInUser, signUpNutricionista as signUpUser };
+
+
