@@ -37,7 +37,7 @@ export default function LoginScreen({ onNavigateRegister, onNavigateForgotPasswo
       <div className="auth-card">
         <div className="auth-card-header">
           <h2 className="auth-card-title">Acesse sua Conta</h2>
-          <p className="auth-card-subtitle">Área de acesso para nutricionistas e pacientes</p>
+          <p className="auth-card-subtitle">Área de acesso do nutricionista</p>
         </div>
 
         {error && (

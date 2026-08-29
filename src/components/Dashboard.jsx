@@ -10,13 +10,16 @@ import {
   ChevronRight,
   ShieldCheck,
   HeartPulse,
-  Sparkles
+  Sparkles,
+  UserPlus
 } from 'lucide-react';
 import { signOutNutricionista, getDashboardMetrics } from '../lib/neon';
 
 export default function Dashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'pacientes'
   const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [patientsViewState, setPatientsViewState] = useState('list');
+  const [newPatientTrigger, setNewPatientTrigger] = useState(0);
   const [loadingMetrics, setLoadingMetrics] = useState(true);
   const [metrics, setMetrics] = useState({
     totalPacientes: 0,
@@ -47,6 +50,12 @@ export default function Dashboard({ user, onLogout }) {
   const handlePatientClick = (patientId) => {
     setSelectedPatientId(patientId);
     setActiveTab('pacientes');
+  };
+
+  const handleOpenNewPatient = () => {
+    setSelectedPatientId(null);
+    setActiveTab('pacientes');
+    setNewPatientTrigger(prev => prev + 1);
   };
 
   return (
@@ -121,6 +130,8 @@ export default function Dashboard({ user, onLogout }) {
             user={user}
             selectedPatientId={selectedPatientId}
             onBackToDashboard={() => setActiveTab('dashboard')}
+            newPatientTrigger={newPatientTrigger}
+            onViewStateChange={setPatientsViewState}
           />
         ) : (
           <div className="dashboard-home-view fade-in">
@@ -236,6 +247,20 @@ export default function Dashboard({ user, onLogout }) {
           </div>
         )}
       </main>
+
+      {/* Botão Flutuante no Canto da Tela para Cadastrar Novo Paciente */}
+      {!(activeTab === 'pacientes' && patientsViewState === 'form') && (
+        <button
+          type="button"
+          className="floating-action-btn fade-in"
+          onClick={handleOpenNewPatient}
+          title="Cadastrar Novo Paciente"
+          id="btn-floating-novo-paciente"
+        >
+          <UserPlus size={20} className="fab-icon" />
+          <span>Novo Paciente</span>
+        </button>
+      )}
     </div>
   );
 }

@@ -1,74 +1,143 @@
 import { neon } from '@neondatabase/serverless';
 
-export const NEON_AUTH_URL = import.meta.env.VITE_NEON_AUTH_URL || 'https://ep-withered-river-acaeu04h.neonauth.sa-east-1.aws.neon.tech/neondb/auth';
-export const NEON_DB_URL = import.meta.env.VITE_NEON_DB_URL || '';
+export const NEON_AUTH_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_NEON_AUTH_URL) ||
+  (typeof process !== 'undefined' && process.env?.VITE_NEON_AUTH_URL) ||
+  'https://ep-withered-river-acaeu04h.neonauth.sa-east-1.aws.neon.tech/neondb/auth';
+
+export const NEON_DB_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_NEON_DB_URL) ||
+  (typeof process !== 'undefined' && process.env?.VITE_NEON_DB_URL) ||
+  'postgresql://neondb_owner:npg_8kDRatzZ7qGj@ep-withered-river-acaeu04h-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require';
 
 const sql = NEON_DB_URL ? neon(NEON_DB_URL) : null;
 
+function isUuid(str) {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+}
+
+function parseArrayField(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val.filter(Boolean);
+  if (typeof val === 'string') {
+    return val.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
 /**
- * Initialize Database Tables if they do not exist
+ * Ensure a valid UUID Nutritionist exists in public.nutricionistas
  */
-export async function initDatabaseTables() {
-  if (!sql) return;
+async function ensureNutricionistaId(nutriId, fallbackName = 'Nutricionista', fallbackEmail = 'nutri@nutrigreg.com') {
+  if (!sql) return null;
+
   try {
-    await sql`
-      CREATE TABLE IF NOT EXISTS public.nutricionistas (
-        id TEXT PRIMARY KEY,
-        nome TEXT NOT NULL,
-        email TEXT NOT NULL UNIQUE
-      );
-    `;
+    if (isUuid(nutriId)) {
+      const existing = await sql`SELECT id FROM public.nutricionistas WHERE id = ${nutriId} LIMIT 1`;
+      if (existing && existing.length > 0) {
+        return existing[0].id;
+      }
+      // Insert if not yet in public.nutricionistas
+      const inserted = await sql`
+        INSERT INTO public.nutricionistas (id, nome, email)
+        VALUES (${nutriId}, ${fallbackName}, ${fallbackEmail})
+        ON CONFLICT (id) DO UPDATE SET nome = EXCLUDED.nome
+        RETURNING id;
+      `;
+      return inserted[0].id;
+    }
 
-    await sql`
-      CREATE TABLE IF NOT EXISTS public.pacientes (
-        id SERIAL PRIMARY KEY,
-        nutricionista_id TEXT NOT NULL,
-        nome TEXT NOT NULL,
-        email TEXT,
-        telefone TEXT,
-        whatsapp TEXT,
-        data_nascimento DATE,
-        sexo TEXT,
-        peso NUMERIC,
-        altura NUMERIC,
-        imc NUMERIC,
-        objetivo TEXT,
-        nivel_atividade TEXT,
-        patologias TEXT,
-        restricoes TEXT,
-        alergias TEXT,
-        medicamentos TEXT,
-        suplementos TEXT,
-        refeicoes_dia INT,
-        horario_acorda TEXT,
-        horario_dorme TEXT,
-        agua_litros NUMERIC,
-        pratica_exercicio BOOLEAN,
-        exercicio_detalhes TEXT,
-        observacoes TEXT,
-        ultima_consulta TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `;
+    // If nutriId is not a UUID (e.g. 'demo' or user without valid UUID), use or create one in public.nutricionistas
+    const existing = await sql`SELECT id FROM public.nutricionistas ORDER BY created_at ASC LIMIT 1`;
+    if (existing && existing.length > 0) {
+      return existing[0].id;
+    }
 
-    await sql`
-      CREATE TABLE IF NOT EXISTS public.consultas (
-        id SERIAL PRIMARY KEY,
-        paciente_id INT REFERENCES public.pacientes(id) ON DELETE CASCADE,
-        nutricionista_id TEXT NOT NULL,
-        data_consulta TIMESTAMP NOT NULL,
-        data_proximo_retorno TIMESTAMP,
-        observacoes TEXT,
-        status TEXT DEFAULT 'realizada'
-      );
+    const inserted = await sql`
+      INSERT INTO public.nutricionistas (nome, email)
+      VALUES (${fallbackName}, ${fallbackEmail})
+      RETURNING id;
     `;
+    return inserted[0].id;
   } catch (err) {
-    console.warn('Aviso na inicialização de tabelas Neon:', err);
+    console.warn('Aviso ao garantir nutricionista no banco:', err);
+    return null;
   }
 }
 
 /**
- * Sign up a new user via Neon Auth and insert into public.nutricionistas
+ * Map PostgreSQL row from public.pacientes to Frontend Model
+ */
+function mapDbPatientToModel(row) {
+  if (!row) return null;
+
+  const objetivosArr = Array.isArray(row.objetivos) ? row.objetivos : parseArrayField(row.objetivos);
+  const patologiasArr = Array.isArray(row.patologias) ? row.patologias : parseArrayField(row.patologias);
+  const restricoesArr = Array.isArray(row.restricoes_alimentares) ? row.restricoes_alimentares : parseArrayField(row.restricoes_alimentares);
+  const alergiasArr = Array.isArray(row.alergias) ? row.alergias : parseArrayField(row.alergias);
+
+  const pesoNum = row.peso_inicial !== null && row.peso_inicial !== undefined ? String(row.peso_inicial) : '';
+  const alturaNum = row.altura !== null && row.altura !== undefined ? String(row.altura) : '';
+
+  // Calculate IMC
+  let imcStr = '';
+  if (pesoNum && alturaNum && Number(alturaNum) > 0) {
+    const altM = Number(alturaNum) / 100;
+    imcStr = (Number(pesoNum) / (altM * altM)).toFixed(1);
+  }
+
+  let formattedBirth = '';
+  if (row.data_nascimento) {
+    try {
+      const d = new Date(row.data_nascimento);
+      if (!isNaN(d.getTime())) {
+        formattedBirth = d.toISOString().split('T')[0];
+      }
+    } catch (e) {
+      formattedBirth = String(row.data_nascimento).split('T')[0];
+    }
+  }
+
+  return {
+    id: row.id,
+    nutricionista_id: row.nutricionista_id,
+    nome: row.nome || '',
+    data_nascimento: formattedBirth,
+    sexo: row.sexo || 'Feminino',
+    telefone: row.whatsapp || '',
+    whatsapp: row.whatsapp || '',
+    email: row.email || '',
+    peso: pesoNum,
+    peso_inicial: row.peso_inicial,
+    altura: alturaNum,
+    imc: imcStr,
+    objetivo: objetivosArr.join(', '),
+    objetivos_selecionados: objetivosArr,
+    objetivo_outro: row.objetivo_texto || '',
+    nivel_atividade: row.nivel_atividade || 'Moderadamente ativo',
+    patologias: patologiasArr.join(', '),
+    patologias_selecionadas: patologiasArr,
+    restricoes: restricoesArr.join(', '),
+    restricoes_selecionadas: restricoesArr,
+    alergias: alergiasArr.join(', '),
+    alergias_selecionadas: alergiasArr,
+    medicamentos: row.medicamentos || '',
+    suplementos: row.suplementos || '',
+    refeicoes_dia: row.refeicoes_por_dia ? String(row.refeicoes_por_dia) : '4',
+    horario_acorda: row.horario_acorda || '06:00',
+    horario_dorme: row.horario_dorme || '22:30',
+    agua_litros: row.litros_agua !== null && row.litros_agua !== undefined ? String(row.litros_agua) : '2.5',
+    pratica_exercicio: row.atividade_fisica ? 'sim' : 'nao',
+    exercicio_detalhes: row.atividade_fisica_descricao || '',
+    observacoes: row.observacoes || '',
+    created_at: row.created_at,
+    ultima_consulta: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+  };
+}
+
+/**
+ * Sign up a new Nutritionist via Neon Auth and insert into public.nutricionistas
  */
 export async function signUpNutricionista({ nome, email, password }) {
   if (!password || password.length < 9) {
@@ -90,9 +159,9 @@ export async function signUpNutricionista({ nome, email, password }) {
     },
     credentials: 'include',
     body: JSON.stringify({
-      email,
+      email: email.trim().toLowerCase(),
       password,
-      name: nome
+      name: nome.trim()
     })
   });
 
@@ -109,25 +178,22 @@ export async function signUpNutricionista({ nome, email, password }) {
   const user = data.user || data;
 
   try {
-    if (sql) {
-      await initDatabaseTables();
-      if (user && user.id) {
-        await sql`
-          INSERT INTO public.nutricionistas (id, nome, email)
-          VALUES (${user.id}, ${nome.trim()}, ${email.trim()})
-          ON CONFLICT (id) DO UPDATE SET nome = EXCLUDED.nome, email = EXCLUDED.email
-        `;
-      }
+    if (sql && user && user.id) {
+      await sql`
+        INSERT INTO public.nutricionistas (id, nome, email)
+        VALUES (${user.id}, ${nome.trim()}, ${email.trim().toLowerCase()})
+        ON CONFLICT (id) DO UPDATE SET nome = EXCLUDED.nome, email = EXCLUDED.email;
+      `;
     }
   } catch (dbErr) {
-    console.warn('Erro ao salvar na tabela nutricionistas:', dbErr);
+    console.warn('Aviso ao sincronizar nutricionista no banco:', dbErr);
   }
 
   const sessionData = {
     user: {
       id: user.id || user.user?.id || email,
-      name: nome,
-      email: email
+      name: nome.trim(),
+      email: email.trim().toLowerCase()
     },
     token: data.token || 'session_active'
   };
@@ -144,6 +210,8 @@ export async function signInNutricionista({ email, password }) {
     throw new Error('Preencha os campos de email e senha.');
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+
   const response = await fetch(`${NEON_AUTH_URL}/sign-in/email`, {
     method: 'POST',
     headers: {
@@ -151,7 +219,7 @@ export async function signInNutricionista({ email, password }) {
     },
     credentials: 'include',
     body: JSON.stringify({
-      email,
+      email: cleanEmail,
       password
     })
   });
@@ -171,11 +239,10 @@ export async function signInNutricionista({ email, password }) {
   let fetchedName = user.name || user.nome;
   try {
     if (sql) {
-      await initDatabaseTables();
       const rows = await sql`
-        SELECT nome FROM public.nutricionistas WHERE email = ${email.trim()} LIMIT 1
+        SELECT nome FROM public.nutricionistas WHERE email = ${cleanEmail} LIMIT 1
       `;
-      if (rows && rows.length > 0) {
+      if (rows && rows.length > 0 && rows[0].nome) {
         fetchedName = rows[0].nome;
       }
     }
@@ -185,9 +252,9 @@ export async function signInNutricionista({ email, password }) {
 
   const sessionData = {
     user: {
-      id: user.id || user.user?.id || email,
-      name: fetchedName || email.split('@')[0],
-      email: email
+      id: user.id || user.user?.id || cleanEmail,
+      name: fetchedName || cleanEmail.split('@')[0],
+      email: cleanEmail
     },
     token: data.token || 'session_active'
   };
@@ -243,7 +310,7 @@ export async function signOutNutricionista() {
 }
 
 /**
- * Fetch Real-time Dashboard Metrics from Neon DB with Fallback Demonstration Data
+ * Fetch Real-time Dashboard Metrics from Neon DB
  */
 export async function getDashboardMetrics(nutriId) {
   let totalPacientes = 0;
@@ -252,61 +319,37 @@ export async function getDashboardMetrics(nutriId) {
 
   try {
     if (sql) {
-      await initDatabaseTables();
+      let countRes;
+      if (isUuid(nutriId)) {
+        countRes = await sql`
+          SELECT COUNT(*)::int as total FROM public.pacientes
+          WHERE nutricionista_id = ${nutriId}
+        `;
+      } else {
+        countRes = await sql`
+          SELECT COUNT(*)::int as total FROM public.pacientes
+        `;
+      }
 
-      // Total Pacientes Ativos
-      const countRes = await sql`
-        SELECT COUNT(*)::int as total FROM public.pacientes
-        WHERE nutricionista_id = ${nutriId} OR nutricionista_id = ${nutriId.toString()}
-      `;
       if (countRes && countRes.length > 0) {
         totalPacientes = countRes[0].total;
       }
 
-      // Consultas da Semana
-      const consultasRes = await sql`
-        SELECT COUNT(*)::int as total FROM public.consultas
-        WHERE (nutricionista_id = ${nutriId} OR nutricionista_id = ${nutriId.toString()})
-        AND data_consulta >= CURRENT_DATE - INTERVAL '7 days'
-      `;
-      if (consultasRes && consultasRes.length > 0) {
-        consultasSemana = consultasRes[0].total;
-      }
-
-      // Pacientes sem retorno (> 30 dias desde última consulta e sem próximo retorno)
-      const semRetornoRes = await sql`
-        SELECT p.id, p.nome, MAX(c.data_consulta) as ultima_consulta, MAX(c.data_proximo_retorno) as proximo_retorno
-        FROM public.pacientes p
-        LEFT JOIN public.consultas c ON p.id = c.paciente_id
-        WHERE p.nutricionista_id = ${nutriId} OR p.nutricionista_id = ${nutriId.toString()}
-        GROUP BY p.id, p.nome
-        HAVING (MAX(c.data_consulta) < CURRENT_DATE - INTERVAL '30 days' OR MAX(c.data_consulta) IS NULL)
-        AND (MAX(c.data_proximo_retorno) IS NULL OR MAX(c.data_proximo_retorno) < CURRENT_DATE)
-      `;
-
-      if (semRetornoRes && semRetornoRes.length > 0) {
-        pacientesSemRetorno = semRetornoRes.map(row => ({
-          id: row.id,
-          nome: row.nome,
-          diasSemRetorno: row.ultima_consulta 
-            ? Math.floor((new Date() - new Date(row.ultima_consulta)) / (1000 * 60 * 60 * 24))
-            : 35
-        }));
+      // Consultas da semana
+      try {
+        const consultasRes = await sql`
+          SELECT COUNT(*)::int as total FROM public.consultas
+          WHERE data_consulta >= CURRENT_DATE - INTERVAL '7 days'
+        `;
+        if (consultasRes && consultasRes.length > 0) {
+          consultasSemana = consultasRes[0].total;
+        }
+      } catch (e) {
+        // Consultas table query
       }
     }
   } catch (err) {
-    console.warn('Erro ao carregar dados do Neon DB, usando dados padrão:', err);
-  }
-
-  // Initial demonstration fallback data if DB is newly created / empty
-  if (totalPacientes === 0 && pacientesSemRetorno.length === 0) {
-    totalPacientes = 14;
-    consultasSemana = 6;
-    pacientesSemRetorno = [
-      { id: 101, nome: 'Carlos Eduardo Silva', diasSemRetorno: 42 },
-      { id: 102, nome: 'Mariana Costa Oliveira', diasSemRetorno: 38 },
-      { id: 103, nome: 'Fernanda Lima Santos', diasSemRetorno: 31 }
-    ];
+    console.warn('Erro ao carregar métricas do Neon DB:', err);
   }
 
   return {
@@ -317,197 +360,400 @@ export async function getDashboardMetrics(nutriId) {
 }
 
 /**
- * LocalStorage Fallback Helper for Patients
- */
-function getLocalPatients(nutriId) {
-  try {
-    const raw = localStorage.getItem(`nutri_pacientes_${nutriId}`);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.warn('Erro ao ler localStorage de pacientes:', e);
-  }
-  return null;
-}
-
-function setLocalPatients(nutriId, list) {
-  try {
-    localStorage.setItem(`nutri_pacientes_${nutriId}`, JSON.stringify(list));
-  } catch (e) {
-    console.warn('Erro ao salvar no localStorage:', e);
-  }
-}
-
-/**
- * Fetch Patients List for logged-in Nutritionist
+ * Fetch Patients List for logged-in Nutritionist from Neon DB
  */
 export async function getPacientesList(nutriId) {
   let list = [];
+
   try {
     if (sql) {
-      await initDatabaseTables();
-      const rows = await sql`
-        SELECT * FROM public.pacientes
-        WHERE nutricionista_id = ${nutriId} OR nutricionista_id = ${nutriId.toString()}
-        ORDER BY id DESC
-      `;
+      let rows;
+      if (isUuid(nutriId)) {
+        rows = await sql`
+          SELECT * FROM public.pacientes
+          WHERE nutricionista_id = ${nutriId}
+          ORDER BY created_at DESC
+        `;
+      } else {
+        rows = await sql`
+          SELECT * FROM public.pacientes
+          ORDER BY created_at DESC
+        `;
+      }
+
       if (rows && rows.length > 0) {
-        list = rows;
+        list = rows.map(mapDbPatientToModel);
       }
     }
   } catch (e) {
-    console.warn('Erro ao buscar lista de pacientes no DB:', e);
-  }
-
-  if (list.length === 0) {
-    const local = getLocalPatients(nutriId);
-    if (local && local.length > 0) {
-      list = local;
-    }
-  }
-
-  if (list.length === 0) {
-    // Demonstration Fallback Initial Patients
-    list = [
-      { id: 101, nome: 'Carlos Eduardo Silva', email: 'carlos@exemplo.com', telefone: '(11) 98765-4321', whatsapp: '(11) 98765-4321', objetivo: 'Hipertrofia & Ganho de Massa', data_nascimento: '1992-05-14', sexo: 'Masculino', peso: 82, altura: 178, imc: 25.9, nivel_atividade: 'Moderadamente ativo', patologias: 'Nenhum', restricoes: 'Lactose', alergias: 'Nenhum', refeicoes_dia: 5, agua_litros: 3.5, ultima_consulta: '2026-08-01' },
-      { id: 102, nome: 'Mariana Costa Oliveira', email: 'mariana@exemplo.com', telefone: '(11) 97654-3210', whatsapp: '(11) 97654-3210', objetivo: 'Reeducação Alimentar & Perda de Peso', data_nascimento: '1996-09-22', sexo: 'Feminino', peso: 64, altura: 165, imc: 23.5, nivel_atividade: 'Levemente ativo', patologias: 'Nenhum', restricoes: 'Glúten', alergias: 'Amendoim', refeicoes_dia: 4, agua_litros: 2.5, ultima_consulta: '2026-07-20' },
-      { id: 103, nome: 'Fernanda Lima Santos', email: 'fernanda@exemplo.com', telefone: '(11) 96543-2109', whatsapp: '(11) 96543-2109', objetivo: 'Melhoria de Exames & Saúde', data_nascimento: '1988-11-03', sexo: 'Feminino', peso: 70, altura: 162, imc: 26.7, nivel_atividade: 'Sedentário', patologias: 'Hipertensão', restricoes: 'Açúcar', alergias: 'Nenhum', refeicoes_dia: 3, agua_litros: 2.0, ultima_consulta: '2026-07-15' }
-    ];
-    setLocalPatients(nutriId, list);
+    console.error('Erro ao buscar lista de pacientes no Neon DB:', e);
   }
 
   return list;
 }
 
 /**
- * Save / Create new Patient
+ * Save / Create new Patient directly in Neon DB (public.pacientes)
  */
 export async function createPaciente(pacienteData, nutriId) {
   if (!pacienteData.nome || !pacienteData.nome.trim()) {
     throw new Error('O nome completo do paciente é obrigatório.');
   }
 
-  const newPatientObj = {
-    ...pacienteData,
-    id: Date.now(),
-    nutricionista_id: nutriId,
-    criado_em: new Date().toISOString(),
-    ultima_consulta: new Date().toISOString().split('T')[0]
-  };
-
-  try {
-    if (sql) {
-      await initDatabaseTables();
-      const rows = await sql`
-        INSERT INTO public.pacientes (
-          nutricionista_id, nome, email, telefone, whatsapp, data_nascimento, sexo,
-          peso, altura, imc, objetivo, nivel_atividade, patologias, restricoes, alergias,
-          medicamentos, suplementos, refeicoes_dia, horario_acorda, horario_dorme,
-          agua_litros, pratica_exercicio, exercicio_detalhes, observacoes, ultima_consulta
-        ) VALUES (
-          ${nutriId.toString()}, ${pacienteData.nome.trim()}, ${pacienteData.email || ''}, ${pacienteData.telefone || ''},
-          ${pacienteData.whatsapp || ''}, ${pacienteData.data_nascimento || null}, ${pacienteData.sexo || ''},
-          ${pacienteData.peso ? Number(pacienteData.peso) : null}, ${pacienteData.altura ? Number(pacienteData.altura) : null},
-          ${pacienteData.imc ? Number(pacienteData.imc) : null}, ${pacienteData.objetivo || ''}, ${pacienteData.nivel_atividade || ''},
-          ${pacienteData.patologias || ''}, ${pacienteData.restricoes || ''}, ${pacienteData.alergias || ''},
-          ${pacienteData.medicamentos || ''}, ${pacienteData.suplementos || ''}, ${pacienteData.refeicoes_dia ? Number(pacienteData.refeicoes_dia) : null},
-          ${pacienteData.horario_acorda || ''}, ${pacienteData.horario_dorme || ''}, ${pacienteData.agua_litros ? Number(pacienteData.agua_litros) : null},
-          ${Boolean(pacienteData.pratica_exercicio)}, ${pacienteData.exercicio_detalhes || ''}, ${pacienteData.observacoes || ''},
-          CURRENT_TIMESTAMP
-        )
-        RETURNING *
-      `;
-      if (rows && rows.length > 0) {
-        newPatientObj.id = rows[0].id;
-      }
-    }
-  } catch (err) {
-    console.warn('Erro ao inserir paciente no Neon DB, salvando localmente:', err);
+  if (!sql) {
+    throw new Error('Conexão com o banco de dados Neon não configurada.');
   }
 
-  // Backup to local storage
-  const currentList = await getPacientesList(nutriId);
-  const updatedList = [newPatientObj, ...currentList];
-  setLocalPatients(nutriId, updatedList);
+  // Ensure valid UUID foreign key for nutritionist
+  const validNutriId = await ensureNutricionistaId(nutriId);
 
-  return newPatientObj;
+  // Prepare Array fields for text[] in PostgreSQL
+  const objetivosArr = pacienteData.objetivos_selecionados && pacienteData.objetivos_selecionados.length > 0
+    ? pacienteData.objetivos_selecionados
+    : parseArrayField(pacienteData.objetivo);
+
+  const patologiasArr = pacienteData.patologias_selecionadas && pacienteData.patologias_selecionadas.length > 0
+    ? pacienteData.patologias_selecionadas
+    : parseArrayField(pacienteData.patologias);
+
+  const restricoesArr = pacienteData.restricoes_selecionadas && pacienteData.restricoes_selecionadas.length > 0
+    ? pacienteData.restricoes_selecionadas
+    : parseArrayField(pacienteData.restricoes);
+
+  const alergiasArr = pacienteData.alergias_selecionadas && pacienteData.alergias_selecionadas.length > 0
+    ? pacienteData.alergias_selecionadas
+    : parseArrayField(pacienteData.alergias);
+
+  const pesoVal = pacienteData.peso ? Number(pacienteData.peso) : (pacienteData.peso_inicial ? Number(pacienteData.peso_inicial) : null);
+  const alturaVal = pacienteData.altura ? Number(pacienteData.altura) : null;
+  const refeicoesVal = pacienteData.refeicoes_dia ? parseInt(pacienteData.refeicoes_dia, 10) : (pacienteData.refeicoes_por_dia ? parseInt(pacienteData.refeicoes_por_dia, 10) : null);
+  const aguaVal = pacienteData.agua_litros ? Number(pacienteData.agua_litros) : (pacienteData.litros_agua ? Number(pacienteData.litros_agua) : null);
+  const praticaEx = Boolean(pacienteData.pratica_exercicio === 'sim' || pacienteData.pratica_exercicio === true || pacienteData.atividade_fisica === true);
+  const exDetalhes = pacienteData.exercicio_detalhes || pacienteData.atividade_fisica_descricao || '';
+
+  try {
+    const rows = await sql`
+      INSERT INTO public.pacientes (
+        nutricionista_id,
+        nome,
+        data_nascimento,
+        sexo,
+        whatsapp,
+        email,
+        peso_inicial,
+        altura,
+        objetivos,
+        objetivo_texto,
+        nivel_atividade,
+        patologias,
+        restricoes_alimentares,
+        alergias,
+        medicamentos,
+        suplementos,
+        refeicoes_por_dia,
+        horario_acorda,
+        horario_dorme,
+        litros_agua,
+        atividade_fisica,
+        atividade_fisica_descricao,
+        observacoes
+      ) VALUES (
+        ${validNutriId},
+        ${pacienteData.nome.trim()},
+        ${pacienteData.data_nascimento || null},
+        ${pacienteData.sexo || 'Feminino'},
+        ${pacienteData.whatsapp || pacienteData.telefone || ''},
+        ${pacienteData.email ? pacienteData.email.trim() : ''},
+        ${pesoVal},
+        ${alturaVal},
+        ${objetivosArr},
+        ${pacienteData.objetivo_outro || ''},
+        ${pacienteData.nivel_atividade || 'Moderadamente ativo'},
+        ${patologiasArr},
+        ${restricoesArr},
+        ${alergiasArr},
+        ${pacienteData.medicamentos || ''},
+        ${pacienteData.suplementos || ''},
+        ${refeicoesVal},
+        ${pacienteData.horario_acorda || ''},
+        ${pacienteData.horario_dorme || ''},
+        ${aguaVal},
+        ${praticaEx},
+        ${exDetalhes},
+        ${pacienteData.observacoes || ''}
+      )
+      RETURNING *;
+    `;
+
+    if (rows && rows.length > 0) {
+      return mapDbPatientToModel(rows[0]);
+    }
+    throw new Error('O banco de dados não retornou o registro inserido.');
+  } catch (err) {
+    console.error('Erro ao cadastrar paciente no Neon DB:', err);
+    throw new Error(`Falha ao salvar no banco de dados Neon: ${err.message}`);
+  }
 }
 
 /**
- * Update existing Patient
+ * Update existing Patient in Neon DB
  */
 export async function updatePaciente(pacienteId, pacienteData, nutriId) {
   if (!pacienteData.nome || !pacienteData.nome.trim()) {
     throw new Error('O nome completo do paciente é obrigatório.');
   }
 
-  try {
-    if (sql) {
-      await initDatabaseTables();
-      await sql`
-        UPDATE public.pacientes SET
-          nome = ${pacienteData.nome.trim()},
-          email = ${pacienteData.email || ''},
-          telefone = ${pacienteData.telefone || ''},
-          whatsapp = ${pacienteData.whatsapp || ''},
-          data_nascimento = ${pacienteData.data_nascimento || null},
-          sexo = ${pacienteData.sexo || ''},
-          peso = ${pacienteData.peso ? Number(pacienteData.peso) : null},
-          altura = ${pacienteData.altura ? Number(pacienteData.altura) : null},
-          imc = ${pacienteData.imc ? Number(pacienteData.imc) : null},
-          objetivo = ${pacienteData.objetivo || ''},
-          nivel_atividade = ${pacienteData.nivel_atividade || ''},
-          patologias = ${pacienteData.patologias || ''},
-          restricoes = ${pacienteData.restricoes || ''},
-          alergias = ${pacienteData.alergias || ''},
-          medicamentos = ${pacienteData.medicamentos || ''},
-          suplementos = ${pacienteData.suplementos || ''},
-          refeicoes_dia = ${pacienteData.refeicoes_dia ? Number(pacienteData.refeicoes_dia) : null},
-          horario_acorda = ${pacienteData.horario_acorda || ''},
-          horario_dorme = ${pacienteData.horario_dorme || ''},
-          agua_litros = ${pacienteData.agua_litros ? Number(pacienteData.agua_litros) : null},
-          pratica_exercicio = ${Boolean(pacienteData.pratica_exercicio)},
-          exercicio_detalhes = ${pacienteData.exercicio_detalhes || ''},
-          observacoes = ${pacienteData.observacoes || ''}
-        WHERE id = ${Number(pacienteId)}
-      `;
-    }
-  } catch (err) {
-    console.warn('Erro ao atualizar paciente no DB:', err);
+  if (!sql) {
+    throw new Error('Conexão com o banco de dados Neon não configurada.');
   }
 
-  // Update in local storage
-  const currentList = await getPacientesList(nutriId);
-  const updatedList = currentList.map(p => (String(p.id) === String(pacienteId) ? { ...p, ...pacienteData } : p));
-  setLocalPatients(nutriId, updatedList);
+  const objetivosArr = pacienteData.objetivos_selecionados && pacienteData.objetivos_selecionados.length > 0
+    ? pacienteData.objetivos_selecionados
+    : parseArrayField(pacienteData.objetivo);
 
-  return { ...pacienteData, id: pacienteId };
+  const patologiasArr = pacienteData.patologias_selecionadas && pacienteData.patologias_selecionadas.length > 0
+    ? pacienteData.patologias_selecionadas
+    : parseArrayField(pacienteData.patologias);
+
+  const restricoesArr = pacienteData.restricoes_selecionadas && pacienteData.restricoes_selecionadas.length > 0
+    ? pacienteData.restricoes_selecionadas
+    : parseArrayField(pacienteData.restricoes);
+
+  const alergiasArr = pacienteData.alergias_selecionadas && pacienteData.alergias_selecionadas.length > 0
+    ? pacienteData.alergias_selecionadas
+    : parseArrayField(pacienteData.alergias);
+
+  const pesoVal = pacienteData.peso ? Number(pacienteData.peso) : (pacienteData.peso_inicial ? Number(pacienteData.peso_inicial) : null);
+  const alturaVal = pacienteData.altura ? Number(pacienteData.altura) : null;
+  const refeicoesVal = pacienteData.refeicoes_dia ? parseInt(pacienteData.refeicoes_dia, 10) : (pacienteData.refeicoes_por_dia ? parseInt(pacienteData.refeicoes_por_dia, 10) : null);
+  const aguaVal = pacienteData.agua_litros ? Number(pacienteData.agua_litros) : (pacienteData.litros_agua ? Number(pacienteData.litros_agua) : null);
+  const praticaEx = Boolean(pacienteData.pratica_exercicio === 'sim' || pacienteData.pratica_exercicio === true || pacienteData.atividade_fisica === true);
+  const exDetalhes = pacienteData.exercicio_detalhes || pacienteData.atividade_fisica_descricao || '';
+
+  try {
+    const rows = await sql`
+      UPDATE public.pacientes SET
+        nome = ${pacienteData.nome.trim()},
+        data_nascimento = ${pacienteData.data_nascimento || null},
+        sexo = ${pacienteData.sexo || 'Feminino'},
+        whatsapp = ${pacienteData.whatsapp || pacienteData.telefone || ''},
+        email = ${pacienteData.email ? pacienteData.email.trim() : ''},
+        peso_inicial = ${pesoVal},
+        altura = ${alturaVal},
+        objetivos = ${objetivosArr},
+        objetivo_texto = ${pacienteData.objetivo_outro || ''},
+        nivel_atividade = ${pacienteData.nivel_atividade || 'Moderadamente ativo'},
+        patologias = ${patologiasArr},
+        restricoes_alimentares = ${restricoesArr},
+        alergias = ${alergiasArr},
+        medicamentos = ${pacienteData.medicamentos || ''},
+        suplementos = ${pacienteData.suplementos || ''},
+        refeicoes_por_dia = ${refeicoesVal},
+        horario_acorda = ${pacienteData.horario_acorda || ''},
+        horario_dorme = ${pacienteData.horario_dorme || ''},
+        litros_agua = ${aguaVal},
+        atividade_fisica = ${praticaEx},
+        atividade_fisica_descricao = ${exDetalhes},
+        observacoes = ${pacienteData.observacoes || ''}
+      WHERE id = ${pacienteId}
+      RETURNING *;
+    `;
+
+    if (rows && rows.length > 0) {
+      return mapDbPatientToModel(rows[0]);
+    }
+    throw new Error('Paciente não encontrado para atualização.');
+  } catch (err) {
+    console.error('Erro ao atualizar paciente no Neon DB:', err);
+    throw new Error(`Falha ao atualizar no banco de dados Neon: ${err.message}`);
+  }
 }
 
 /**
- * Delete Patient
+ * Delete Patient from Neon DB
  */
 export async function deletePaciente(pacienteId, nutriId) {
-  try {
-    if (sql) {
-      await initDatabaseTables();
-      await sql`DELETE FROM public.pacientes WHERE id = ${Number(pacienteId)}`;
-    }
-  } catch (err) {
-    console.warn('Erro ao excluir paciente no DB:', err);
-  }
+  if (!sql) return;
 
-  const currentList = await getPacientesList(nutriId);
-  const updatedList = currentList.filter(p => String(p.id) !== String(pacienteId));
-  setLocalPatients(nutriId, updatedList);
+  try {
+    await sql`DELETE FROM public.pacientes WHERE id = ${pacienteId}`;
+  } catch (err) {
+    console.error('Erro ao excluir paciente no Neon DB:', err);
+    throw new Error(`Falha ao excluir paciente do banco Neon: ${err.message}`);
+  }
 }
 
 /**
- * Fetch List of Nutritionists for Patient registration dropdown
+ * Fetch Consultations for a Patient from Neon DB
+ */
+export async function getConsultas(pacienteId) {
+  if (!sql || !pacienteId) return [];
+
+  try {
+    const rows = await sql`
+      SELECT * FROM public.consultas
+      WHERE paciente_id = ${pacienteId}
+      ORDER BY data_consulta DESC, created_at DESC
+    `;
+
+    return rows.map(r => ({
+      id: r.id,
+      paciente_id: r.paciente_id,
+      data_consulta: r.data_consulta ? String(r.data_consulta).split('T')[0] : '',
+      peso: r.peso !== null && r.peso !== undefined ? Number(r.peso) : null,
+      cintura: r.cintura !== null && r.cintura !== undefined ? Number(r.cintura) : null,
+      quadril: r.quadril !== null && r.quadril !== undefined ? Number(r.quadril) : null,
+      percentual_gordura: r.percentual_gordura !== null && r.percentual_gordura !== undefined ? Number(r.percentual_gordura) : null,
+      observacoes: r.observacoes || '',
+      proximo_retorno: r.proximo_retorno ? String(r.proximo_retorno).split('T')[0] : '',
+      created_at: r.created_at
+    }));
+  } catch (err) {
+    console.error('Erro ao buscar consultas no Neon DB:', err);
+    return [];
+  }
+}
+
+/**
+ * Create a new Consultation in Neon DB (public.consultas)
+ */
+export async function createConsulta(pacienteId, consultaData) {
+  if (!sql) throw new Error('Conexão com o banco de dados Neon não configurada.');
+  if (!pacienteId) throw new Error('ID do paciente é obrigatório para registrar a consulta.');
+  if (!consultaData.data_consulta) throw new Error('Data da consulta é obrigatória.');
+  if (!consultaData.peso) throw new Error('O peso atual é obrigatório.');
+
+  const pesoNum = Number(consultaData.peso);
+  const cinturaNum = consultaData.cintura ? Number(consultaData.cintura) : null;
+  const quadrilNum = consultaData.quadril ? Number(consultaData.quadril) : null;
+  const gorduraNum = consultaData.percentual_gordura ? Number(consultaData.percentual_gordura) : null;
+  const retornoDate = consultaData.proximo_retorno || null;
+
+  try {
+    const rows = await sql`
+      INSERT INTO public.consultas (
+        paciente_id,
+        data_consulta,
+        peso,
+        cintura,
+        quadril,
+        percentual_gordura,
+        observacoes,
+        proximo_retorno
+      ) VALUES (
+        ${pacienteId},
+        ${consultaData.data_consulta},
+        ${pesoNum},
+        ${cinturaNum},
+        ${quadrilNum},
+        ${gorduraNum},
+        ${consultaData.observacoes || ''},
+        ${retornoDate}
+      )
+      RETURNING *;
+    `;
+
+    if (rows && rows.length > 0) {
+      const r = rows[0];
+      return {
+        id: r.id,
+        paciente_id: r.paciente_id,
+        data_consulta: r.data_consulta ? String(r.data_consulta).split('T')[0] : '',
+        peso: r.peso !== null ? Number(r.peso) : null,
+        cintura: r.cintura !== null ? Number(r.cintura) : null,
+        quadril: r.quadril !== null ? Number(r.quadril) : null,
+        percentual_gordura: r.percentual_gordura !== null ? Number(r.percentual_gordura) : null,
+        observacoes: r.observacoes || '',
+        proximo_retorno: r.proximo_retorno ? String(r.proximo_retorno).split('T')[0] : '',
+        created_at: r.created_at
+      };
+    }
+    throw new Error('O banco de dados não retornou o registro da consulta.');
+  } catch (err) {
+    console.error('Erro ao salvar consulta no Neon DB:', err);
+    throw new Error(`Falha ao registrar consulta no banco Neon: ${err.message}`);
+  }
+}
+
+/**
+ * Delete a Consultation from Neon DB
+ */
+export async function deleteConsulta(consultaId) {
+  if (!sql || !consultaId) return;
+
+  try {
+    await sql`DELETE FROM public.consultas WHERE id = ${consultaId}`;
+  } catch (err) {
+    console.error('Erro ao excluir consulta no Neon DB:', err);
+    throw new Error(`Falha ao excluir consulta: ${err.message}`);
+  }
+}
+
+/**
+ * Fetch Meal Plans for a Patient from Neon DB
+ */
+export async function getPlanosAlimentares(pacienteId) {
+  if (!sql || !pacienteId) return [];
+
+  try {
+    const rows = await sql`
+      SELECT * FROM public.planos_alimentares
+      WHERE paciente_id = ${pacienteId}
+      ORDER BY created_at DESC
+    `;
+
+    return rows.map(r => ({
+      id: r.id,
+      paciente_id: r.paciente_id,
+      conteudo: r.conteudo,
+      created_at: r.created_at
+    }));
+  } catch (err) {
+    console.error('Erro ao buscar planos alimentares no Neon DB:', err);
+    return [];
+  }
+}
+
+/**
+ * Create a Meal Plan in Neon DB
+ */
+export async function createPlanoAlimentar(pacienteId, conteudo) {
+  if (!sql) throw new Error('Conexão com o banco de dados Neon não configurada.');
+  if (!pacienteId) throw new Error('ID do paciente é obrigatório.');
+
+  try {
+    const rows = await sql`
+      INSERT INTO public.planos_alimentares (
+        paciente_id,
+        conteudo
+      ) VALUES (
+        ${pacienteId},
+        ${conteudo}
+      )
+      RETURNING *;
+    `;
+
+    if (rows && rows.length > 0) {
+      return {
+        id: rows[0].id,
+        paciente_id: rows[0].paciente_id,
+        conteudo: rows[0].conteudo,
+        created_at: rows[0].created_at
+      };
+    }
+    throw new Error('Falha ao inserir plano alimentar.');
+  } catch (err) {
+    console.error('Erro ao salvar plano alimentar no Neon DB:', err);
+    throw new Error(`Falha ao salvar plano alimentar: ${err.message}`);
+  }
+}
+
+/**
+ * Fetch List of Nutritionists for dropdown
  */
 export async function getNutricionistasList() {
   try {
     if (sql) {
-      await initDatabaseTables();
       const rows = await sql`SELECT id, nome, email FROM public.nutricionistas ORDER BY nome ASC`;
       if (rows && rows.length > 0) return rows;
     }
@@ -522,6 +768,4 @@ export async function getNutricionistasList() {
 
 // Export aliases for compatibility
 export { signInNutricionista as signInUser, signUpNutricionista as signUpUser };
-
-
 

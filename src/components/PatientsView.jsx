@@ -33,6 +33,7 @@ import {
   updatePaciente,
   deletePaciente
 } from '../lib/neon';
+import PatientProfile from './PatientProfile';
 
 /* Formatação e utilitários */
 function calculateAge(birthDateStr) {
@@ -127,7 +128,7 @@ const DEFAULT_PATOLOGIAS = [
 const DEFAULT_RESTRICOES = ['Lactose', 'Glúten', 'Açúcar', 'Carne vermelha', 'Frutos do mar'];
 const DEFAULT_ALERGIAS = ['Amendoim', 'Leite', 'Ovo', 'Soja', 'Trigo', 'Frutos do mar'];
 
-export default function PatientsView({ user, selectedPatientId, onBackToDashboard }) {
+export default function PatientsView({ user, selectedPatientId, onBackToDashboard, newPatientTrigger, onViewStateChange }) {
   const [pacientes, setPacientes] = useState([]);
   const [search, setSearch] = useState('');
   const [viewState, setViewState] = useState('list'); // 'list' | 'form' | 'profile'
@@ -139,6 +140,13 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [saving, setSaving] = useState(false);
+
+  /* Notificar componente pai sobre mudança de viewState */
+  useEffect(() => {
+    if (onViewStateChange) {
+      onViewStateChange(viewState);
+    }
+  }, [viewState, onViewStateChange]);
 
   /* Form Data State */
   const [formData, setFormData] = useState({
@@ -190,6 +198,13 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
     }
     loadData();
   }, [user, selectedPatientId]);
+
+  /* Escutar acionador externo para novo paciente (botão flutuante) */
+  useEffect(() => {
+    if (newPatientTrigger > 0) {
+      handleOpenForm(null);
+    }
+  }, [newPatientTrigger]);
 
   /* Resetar formulário */
   const resetForm = () => {
@@ -351,10 +366,15 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
         altura: formData.altura ? parseFloat(formData.altura) : null,
         imc: imc ? parseFloat(imc) : null,
         objetivo: objetivosFinal,
+        objetivos_selecionados: formData.objetivos_selecionados,
+        objetivo_outro: formData.objetivo_outro,
         nivel_atividade: formData.nivel_atividade,
         patologias: patologiasFinal,
+        patologias_selecionadas: formData.patologias_selecionadas,
         restricoes: restricoesFinal,
+        restricoes_selecionadas: formData.restricoes_selecionadas,
         alergias: alergiasFinal,
+        alergias_selecionadas: formData.alergias_selecionadas,
         medicamentos: formData.medicamentos,
         suplementos: formData.suplementos,
         refeicoes_dia: formData.refeicoes_dia ? parseInt(formData.refeicoes_dia, 10) : null,
@@ -436,164 +456,19 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
       )}
 
       {/* ========================================================================= */}
-      {/* VISÃO 1: PERFIL DO PACIENTE                                               */}
+      {/* VISÃO 1: PERFIL DO PACIENTE (PROMPT 5)                                    */}
       {/* ========================================================================= */}
       {viewState === 'profile' && activePatient ? (
-        <div className="patient-profile-view fade-in">
-          <div className="patient-profile-header">
-            <button
-              type="button"
-              className="btn-back-link"
-              onClick={() => setViewState('list')}
-            >
-              <ArrowLeft size={18} />
-              <span>Voltar para a lista de pacientes</span>
-            </button>
-
-            <div className="profile-actions-bar">
-              <button
-                type="button"
-                className="btn-secondary-action"
-                onClick={() => handleOpenForm(activePatient)}
-              >
-                <Pencil size={16} />
-                <span>Editar Paciente</span>
-              </button>
-
-              <button
-                type="button"
-                className="btn-danger-action"
-                onClick={() => handleDeletePatient(activePatient.id)}
-              >
-                <Trash2 size={16} />
-                <span>Excluir</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="patient-profile-hero">
-            <div className="patient-avatar-circle">
-              {activePatient.nome.charAt(0).toUpperCase()}
-            </div>
-            <div className="patient-hero-info">
-              <h2>{activePatient.nome}</h2>
-              <div className="patient-hero-subtags">
-                <span className="hero-subtag">
-                  {calculateAge(activePatient.data_nascimento) 
-                    ? `${calculateAge(activePatient.data_nascimento)} anos` 
-                    : 'Idade não informada'}
-                </span>
-                {activePatient.sexo && <span className="hero-subtag">{activePatient.sexo}</span>}
-                <span className="hero-subtag status-tag">Paciente Ativo</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="patient-details-grid">
-            <div className="detail-card">
-              <div className="detail-header">
-                <Mail size={18} color="#10b981" />
-                <span>Contato & Email</span>
-              </div>
-              <p className="detail-value">{activePatient.email || 'Não informado'}</p>
-            </div>
-
-            <div className="detail-card">
-              <div className="detail-header">
-                <Phone size={18} color="#10b981" />
-                <span>Telefone / WhatsApp</span>
-              </div>
-              <p className="detail-value">{activePatient.whatsapp || activePatient.telefone || 'Não informado'}</p>
-            </div>
-
-            <div className="detail-card">
-              <div className="detail-header">
-                <Target size={18} color="#10b981" />
-                <span>Objetivo Clínico</span>
-              </div>
-              <p className="detail-value">{activePatient.objetivo || 'Acompanhamento Geral'}</p>
-            </div>
-
-            <div className="detail-card">
-              <div className="detail-header">
-                <Calendar size={18} color="#10b981" />
-                <span>Última Consulta</span>
-              </div>
-              <p className="detail-value">{formatDate(activePatient.ultima_consulta)}</p>
-            </div>
-          </div>
-
-          {/* Dados Clínicos & Anamnese */}
-          <div className="patient-anamnese-card">
-            <h3>📊 Resumo Clínico & Avaliação Antropométrica</h3>
-            <div className="anamnese-stats-grid">
-              <div className="anamnese-stat">
-                <Scale size={20} color="#10b981" />
-                <div>
-                  <span className="stat-label">Peso Atual</span>
-                  <span className="stat-val">{activePatient.peso ? `${activePatient.peso} kg` : 'Não informado'}</span>
-                </div>
-              </div>
-
-              <div className="anamnese-stat">
-                <Activity size={20} color="#38edf6" />
-                <div>
-                  <span className="stat-label">Altura</span>
-                  <span className="stat-val">{activePatient.altura ? `${activePatient.altura} cm` : 'Não informada'}</span>
-                </div>
-              </div>
-
-              <div className="anamnese-stat">
-                <HeartPulse size={20} color="#10b981" />
-                <div>
-                  <span className="stat-label">IMC Calculado</span>
-                  <span className="stat-val">
-                    {activePatient.imc ? `${activePatient.imc} (${calculateIMC(activePatient.peso, activePatient.altura).classificacao})` : '—'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="anamnese-stat">
-                <Droplets size={20} color="#0284c7" />
-                <div>
-                  <span className="stat-label">Meta de Hidratação</span>
-                  <span className="stat-val">{activePatient.agua_litros ? `${activePatient.agua_litros} L / dia` : '2.5 L / dia'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Abas de Detalhes Complementares (Saúde & Hábitos) */}
-          <div className="patient-extra-details-grid">
-            <div className="extra-detail-card">
-              <div className="card-subtitle">
-                <Shield size={18} color="#10b981" />
-                <h4>Saúde & Condições Clínicas</h4>
-              </div>
-              <ul className="info-list">
-                <li><strong>Patologias:</strong> {activePatient.patologias || 'Nenhuma'}</li>
-                <li><strong>Restrições:</strong> {activePatient.restricoes || 'Nenhuma'}</li>
-                <li><strong>Alergias:</strong> {activePatient.alergias || 'Nenhuma'}</li>
-                <li><strong>Medicamentos:</strong> {activePatient.medicamentos || 'Nenhum'}</li>
-                <li><strong>Suplementos:</strong> {activePatient.suplementos || 'Nenhum'}</li>
-              </ul>
-            </div>
-
-            <div className="extra-detail-card">
-              <div className="card-subtitle">
-                <Clock size={18} color="#10b981" />
-                <h4>Hábitos & Rotina Diária</h4>
-              </div>
-              <ul className="info-list">
-                <li><strong>Refeições/dia:</strong> {activePatient.refeicoes_dia ? `${activePatient.refeicoes_dia} refeições` : 'Não informado'}</li>
-                <li><strong>Horário que acorda:</strong> {activePatient.horario_acorda || 'Não informado'}</li>
-                <li><strong>Horário que dorme:</strong> {activePatient.horario_dorme || 'Não informado'}</li>
-                <li><strong>Atividade Física:</strong> {activePatient.pratica_exercicio ? `Sim (${activePatient.exercicio_detalhes || 'Sim'})` : 'Não'}</li>
-                <li><strong>Observações:</strong> {activePatient.observacoes || 'Sem observações'}</li>
-              </ul>
-            </div>
-          </div>
-        </div>
+        <PatientProfile
+          patient={activePatient}
+          user={user}
+          onBack={() => setViewState('list')}
+          onDelete={handleDeletePatient}
+          onPatientUpdated={(updated) => {
+            setActivePatient(updated);
+            setPacientes(prev => prev.map(p => (String(p.id) === String(updated.id) ? updated : p)));
+          }}
+        />
       ) : viewState === 'form' ? (
 
         /* ========================================================================= */
