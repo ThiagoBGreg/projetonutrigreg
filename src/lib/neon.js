@@ -26,8 +26,27 @@ export async function initDatabaseTables() {
         nome TEXT NOT NULL,
         email TEXT,
         telefone TEXT,
+        whatsapp TEXT,
         data_nascimento DATE,
+        sexo TEXT,
+        peso NUMERIC,
+        altura NUMERIC,
+        imc NUMERIC,
         objetivo TEXT,
+        nivel_atividade TEXT,
+        patologias TEXT,
+        restricoes TEXT,
+        alergias TEXT,
+        medicamentos TEXT,
+        suplementos TEXT,
+        refeicoes_dia INT,
+        horario_acorda TEXT,
+        horario_dorme TEXT,
+        agua_litros NUMERIC,
+        pratica_exercicio BOOLEAN,
+        exercicio_detalhes TEXT,
+        observacoes TEXT,
+        ultima_consulta TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
@@ -298,32 +317,188 @@ export async function getDashboardMetrics(nutriId) {
 }
 
 /**
+ * LocalStorage Fallback Helper for Patients
+ */
+function getLocalPatients(nutriId) {
+  try {
+    const raw = localStorage.getItem(`nutri_pacientes_${nutriId}`);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn('Erro ao ler localStorage de pacientes:', e);
+  }
+  return null;
+}
+
+function setLocalPatients(nutriId, list) {
+  try {
+    localStorage.setItem(`nutri_pacientes_${nutriId}`, JSON.stringify(list));
+  } catch (e) {
+    console.warn('Erro ao salvar no localStorage:', e);
+  }
+}
+
+/**
  * Fetch Patients List for logged-in Nutritionist
  */
 export async function getPacientesList(nutriId) {
+  let list = [];
   try {
     if (sql) {
       await initDatabaseTables();
       const rows = await sql`
         SELECT * FROM public.pacientes
         WHERE nutricionista_id = ${nutriId} OR nutricionista_id = ${nutriId.toString()}
-        ORDER BY nome ASC
+        ORDER BY id DESC
       `;
       if (rows && rows.length > 0) {
-        return rows;
+        list = rows;
       }
     }
   } catch (e) {
     console.warn('Erro ao buscar lista de pacientes no DB:', e);
   }
 
-  // Demonstration Fallback Patients
-  return [
-    { id: 101, nome: 'Carlos Eduardo Silva', email: 'carlos@exemplo.com', telefone: '(11) 98765-4321', objetivo: 'Hipertrofia & Ganho de Massa' },
-    { id: 102, nome: 'Mariana Costa Oliveira', email: 'mariana@exemplo.com', telefone: '(11) 97654-3210', objetivo: 'Reeducação Alimentar & Perda de Peso' },
-    { id: 103, nome: 'Fernanda Lima Santos', email: 'fernanda@exemplo.com', telefone: '(11) 96543-2109', objetivo: 'Melhoria de Exames & Saúde' },
-    { id: 104, nome: 'Lucas Mendes Ferreira', email: 'lucas@exemplo.com', telefone: '(11) 95432-1098', objetivo: 'Nutrição Esportiva' }
-  ];
+  if (list.length === 0) {
+    const local = getLocalPatients(nutriId);
+    if (local && local.length > 0) {
+      list = local;
+    }
+  }
+
+  if (list.length === 0) {
+    // Demonstration Fallback Initial Patients
+    list = [
+      { id: 101, nome: 'Carlos Eduardo Silva', email: 'carlos@exemplo.com', telefone: '(11) 98765-4321', whatsapp: '(11) 98765-4321', objetivo: 'Hipertrofia & Ganho de Massa', data_nascimento: '1992-05-14', sexo: 'Masculino', peso: 82, altura: 178, imc: 25.9, nivel_atividade: 'Moderadamente ativo', patologias: 'Nenhum', restricoes: 'Lactose', alergias: 'Nenhum', refeicoes_dia: 5, agua_litros: 3.5, ultima_consulta: '2026-08-01' },
+      { id: 102, nome: 'Mariana Costa Oliveira', email: 'mariana@exemplo.com', telefone: '(11) 97654-3210', whatsapp: '(11) 97654-3210', objetivo: 'Reeducação Alimentar & Perda de Peso', data_nascimento: '1996-09-22', sexo: 'Feminino', peso: 64, altura: 165, imc: 23.5, nivel_atividade: 'Levemente ativo', patologias: 'Nenhum', restricoes: 'Glúten', alergias: 'Amendoim', refeicoes_dia: 4, agua_litros: 2.5, ultima_consulta: '2026-07-20' },
+      { id: 103, nome: 'Fernanda Lima Santos', email: 'fernanda@exemplo.com', telefone: '(11) 96543-2109', whatsapp: '(11) 96543-2109', objetivo: 'Melhoria de Exames & Saúde', data_nascimento: '1988-11-03', sexo: 'Feminino', peso: 70, altura: 162, imc: 26.7, nivel_atividade: 'Sedentário', patologias: 'Hipertensão', restricoes: 'Açúcar', alergias: 'Nenhum', refeicoes_dia: 3, agua_litros: 2.0, ultima_consulta: '2026-07-15' }
+    ];
+    setLocalPatients(nutriId, list);
+  }
+
+  return list;
+}
+
+/**
+ * Save / Create new Patient
+ */
+export async function createPaciente(pacienteData, nutriId) {
+  if (!pacienteData.nome || !pacienteData.nome.trim()) {
+    throw new Error('O nome completo do paciente é obrigatório.');
+  }
+
+  const newPatientObj = {
+    ...pacienteData,
+    id: Date.now(),
+    nutricionista_id: nutriId,
+    criado_em: new Date().toISOString(),
+    ultima_consulta: new Date().toISOString().split('T')[0]
+  };
+
+  try {
+    if (sql) {
+      await initDatabaseTables();
+      const rows = await sql`
+        INSERT INTO public.pacientes (
+          nutricionista_id, nome, email, telefone, whatsapp, data_nascimento, sexo,
+          peso, altura, imc, objetivo, nivel_atividade, patologias, restricoes, alergias,
+          medicamentos, suplementos, refeicoes_dia, horario_acorda, horario_dorme,
+          agua_litros, pratica_exercicio, exercicio_detalhes, observacoes, ultima_consulta
+        ) VALUES (
+          ${nutriId.toString()}, ${pacienteData.nome.trim()}, ${pacienteData.email || ''}, ${pacienteData.telefone || ''},
+          ${pacienteData.whatsapp || ''}, ${pacienteData.data_nascimento || null}, ${pacienteData.sexo || ''},
+          ${pacienteData.peso ? Number(pacienteData.peso) : null}, ${pacienteData.altura ? Number(pacienteData.altura) : null},
+          ${pacienteData.imc ? Number(pacienteData.imc) : null}, ${pacienteData.objetivo || ''}, ${pacienteData.nivel_atividade || ''},
+          ${pacienteData.patologias || ''}, ${pacienteData.restricoes || ''}, ${pacienteData.alergias || ''},
+          ${pacienteData.medicamentos || ''}, ${pacienteData.suplementos || ''}, ${pacienteData.refeicoes_dia ? Number(pacienteData.refeicoes_dia) : null},
+          ${pacienteData.horario_acorda || ''}, ${pacienteData.horario_dorme || ''}, ${pacienteData.agua_litros ? Number(pacienteData.agua_litros) : null},
+          ${Boolean(pacienteData.pratica_exercicio)}, ${pacienteData.exercicio_detalhes || ''}, ${pacienteData.observacoes || ''},
+          CURRENT_TIMESTAMP
+        )
+        RETURNING *
+      `;
+      if (rows && rows.length > 0) {
+        newPatientObj.id = rows[0].id;
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao inserir paciente no Neon DB, salvando localmente:', err);
+  }
+
+  // Backup to local storage
+  const currentList = await getPacientesList(nutriId);
+  const updatedList = [newPatientObj, ...currentList];
+  setLocalPatients(nutriId, updatedList);
+
+  return newPatientObj;
+}
+
+/**
+ * Update existing Patient
+ */
+export async function updatePaciente(pacienteId, pacienteData, nutriId) {
+  if (!pacienteData.nome || !pacienteData.nome.trim()) {
+    throw new Error('O nome completo do paciente é obrigatório.');
+  }
+
+  try {
+    if (sql) {
+      await initDatabaseTables();
+      await sql`
+        UPDATE public.pacientes SET
+          nome = ${pacienteData.nome.trim()},
+          email = ${pacienteData.email || ''},
+          telefone = ${pacienteData.telefone || ''},
+          whatsapp = ${pacienteData.whatsapp || ''},
+          data_nascimento = ${pacienteData.data_nascimento || null},
+          sexo = ${pacienteData.sexo || ''},
+          peso = ${pacienteData.peso ? Number(pacienteData.peso) : null},
+          altura = ${pacienteData.altura ? Number(pacienteData.altura) : null},
+          imc = ${pacienteData.imc ? Number(pacienteData.imc) : null},
+          objetivo = ${pacienteData.objetivo || ''},
+          nivel_atividade = ${pacienteData.nivel_atividade || ''},
+          patologias = ${pacienteData.patologias || ''},
+          restricoes = ${pacienteData.restricoes || ''},
+          alergias = ${pacienteData.alergias || ''},
+          medicamentos = ${pacienteData.medicamentos || ''},
+          suplementos = ${pacienteData.suplementos || ''},
+          refeicoes_dia = ${pacienteData.refeicoes_dia ? Number(pacienteData.refeicoes_dia) : null},
+          horario_acorda = ${pacienteData.horario_acorda || ''},
+          horario_dorme = ${pacienteData.horario_dorme || ''},
+          agua_litros = ${pacienteData.agua_litros ? Number(pacienteData.agua_litros) : null},
+          pratica_exercicio = ${Boolean(pacienteData.pratica_exercicio)},
+          exercicio_detalhes = ${pacienteData.exercicio_detalhes || ''},
+          observacoes = ${pacienteData.observacoes || ''}
+        WHERE id = ${Number(pacienteId)}
+      `;
+    }
+  } catch (err) {
+    console.warn('Erro ao atualizar paciente no DB:', err);
+  }
+
+  // Update in local storage
+  const currentList = await getPacientesList(nutriId);
+  const updatedList = currentList.map(p => (String(p.id) === String(pacienteId) ? { ...p, ...pacienteData } : p));
+  setLocalPatients(nutriId, updatedList);
+
+  return { ...pacienteData, id: pacienteId };
+}
+
+/**
+ * Delete Patient
+ */
+export async function deletePaciente(pacienteId, nutriId) {
+  try {
+    if (sql) {
+      await initDatabaseTables();
+      await sql`DELETE FROM public.pacientes WHERE id = ${Number(pacienteId)}`;
+    }
+  } catch (err) {
+    console.warn('Erro ao excluir paciente no DB:', err);
+  }
+
+  const currentList = await getPacientesList(nutriId);
+  const updatedList = currentList.filter(p => String(p.id) !== String(pacienteId));
+  setLocalPatients(nutriId, updatedList);
 }
 
 /**
@@ -347,5 +522,6 @@ export async function getNutricionistasList() {
 
 // Export aliases for compatibility
 export { signInNutricionista as signInUser, signUpNutricionista as signUpUser };
+
 
 
