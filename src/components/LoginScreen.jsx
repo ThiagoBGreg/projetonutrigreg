@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import HeaderLogo from './HeaderLogo';
-import { Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
 import { signInUser } from '../lib/neon';
 
-export default function LoginScreen({ onNavigateRegister, onNavigateForgotPassword, onLoginSuccess }) {
+export default function LoginScreen({ onNavigateRegister, onNavigateForgotPassword, onLoginSuccess, isEmbedded = false }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -30,107 +30,124 @@ export default function LoginScreen({ onNavigateRegister, onNavigateForgotPasswo
     }
   };
 
-  return (
-    <div className="auth-container">
-      <HeaderLogo />
-
-      <div className="auth-card">
-        <div className="auth-card-header">
-          <h2 className="auth-card-title">Acesse sua Conta</h2>
-          <p className="auth-card-subtitle">Área de acesso do nutricionista</p>
+  const content = (
+    <div className={`auth-card ${isEmbedded ? 'auth-card-embedded' : 'morph-card'}`}>
+      {!isEmbedded && (
+        <div className="auth-card-brand-top">
+          <HeaderLogo />
         </div>
+      )}
 
-        {error && (
-          <div className="alert-box alert-error">
-            <AlertCircle size={18} />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="login-email">Seu email cadastrado</label>
-            <div className="input-wrapper">
-              <span className="input-icon">
-                <Mail size={18} />
-              </span>
-              <input
-                id="login-email"
-                type="email"
-                className="form-input"
-                placeholder="seu.email@exemplo.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label className="form-label" htmlFor="login-password" style={{ margin: 0 }}>Senha</label>
-              <button
-                type="button"
-                className="forgot-password-link"
-                onClick={onNavigateForgotPassword}
-              >
-                Esqueceu a senha?
-              </button>
-            </div>
-            <div className="input-wrapper">
-              <span className="input-icon">
-                <Lock size={18} />
-              </span>
-              <input
-                id="login-password"
-                type={showPassword ? 'text' : 'password'}
-                className="form-input"
-                placeholder="•••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
-              <button
-                type="button"
-                className="toggle-password-btn"
-                onClick={() => setShowPassword(!showPassword)}
-                title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <span className="spinner"></span>
-                <span>Entrando no sistema...</span>
-              </>
-            ) : (
-              <span>Entrar</span>
-            )}
-          </button>
-        </form>
-
-        <div className="auth-footer">
-          Não tem conta?
-          <span
-            className="auth-footer-link"
-            onClick={onNavigateRegister}
-            role="button"
-            tabIndex={0}
-          >
-            Cadastre-se
-          </span>
+      <div className="auth-card-header">
+        <div className="auth-icon-badge morph-circle">
+          <Sparkles size={20} color="#10b981" />
         </div>
+        <h2 className="auth-card-title">Acesse sua Conta</h2>
+        <p className="auth-card-subtitle">Área de gestão clínica e planos nutricionais</p>
       </div>
+
+      {error && (
+        <div className="alert-box alert-error morph-alert">
+          <AlertCircle size={18} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="auth-form-body">
+        <div className="form-group">
+          <label className="form-label" htmlFor="login-email">Seu email cadastrado</label>
+          <div className="input-wrapper morph-input">
+            <span className="input-icon">
+              <Mail size={18} />
+            </span>
+            <input
+              id="login-email"
+              type="email"
+              className="form-input"
+              placeholder="seu.email@exemplo.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+          </div>
+        </div>
+
+        <div className="form-group">
+          <div className="form-label-row">
+            <label className="form-label" htmlFor="login-password">Senha de acesso</label>
+            <button
+              type="button"
+              className="forgot-password-link morph-link"
+              onClick={onNavigateForgotPassword}
+            >
+              Esqueceu a senha?
+            </button>
+          </div>
+          <div className="input-wrapper morph-input">
+            <span className="input-icon">
+              <Lock size={18} />
+            </span>
+            <input
+              id="login-password"
+              type={showPassword ? 'text' : 'password'}
+              className="form-input"
+              placeholder="•••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              className="toggle-password-btn morph-btn-icon"
+              onClick={() => setShowPassword(!showPassword)}
+              title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          className="btn-primary morph-btn glow-btn"
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <span className="spinner"></span>
+              <span>Autenticando...</span>
+            </>
+          ) : (
+            <>
+              <span>Entrar no Consultório</span>
+              <ArrowRight size={18} />
+            </>
+          )}
+        </button>
+      </form>
+
+      <div className="auth-footer">
+        <span>Não tem uma conta cadastrada?</span>
+        <button
+          type="button"
+          className="auth-footer-link morph-link"
+          onClick={onNavigateRegister}
+        >
+          Cadastre-se grátis
+        </button>
+      </div>
+    </div>
+  );
+
+  if (isEmbedded) {
+    return content;
+  }
+
+  return (
+    <div className="auth-container standalone-auth">
+      {content}
     </div>
   );
 }

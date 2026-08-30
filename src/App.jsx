@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import LoginScreen from './components/LoginScreen';
-import RegisterScreen from './components/RegisterScreen';
+import LandingHeroShowcase from './components/LandingHeroShowcase';
 import Dashboard from './components/Dashboard';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { getActiveSession } from './lib/neon';
@@ -8,7 +7,6 @@ import { getActiveSession } from './lib/neon';
 export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [screen, setScreen] = useState('login'); // 'login' | 'register' | 'dashboard'
 
   useEffect(() => {
     async function checkAuth() {
@@ -16,7 +14,6 @@ export default function App() {
         const activeSession = await getActiveSession();
         if (activeSession && activeSession.user) {
           setSession(activeSession);
-          setScreen('dashboard');
         }
       } catch (err) {
         console.error('Erro ao verificar sessão:', err);
@@ -30,32 +27,25 @@ export default function App() {
 
   const handleLoginSuccess = (newSession) => {
     setSession(newSession);
-    setScreen('dashboard');
   };
 
   const handleRegisterSuccess = (newSession) => {
     setSession(newSession);
-    setScreen('dashboard');
   };
 
   const handleLogout = () => {
     setSession(null);
-    setScreen('login');
   };
 
   if (loading) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#f8fafc',
-        fontFamily: "'Outfit', sans-serif"
-      }}>
-        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-          <div className="spinner" style={{ width: '32px', height: '32px', borderTopColor: '#10b981', borderColor: 'rgba(16,185,129,0.2)' }}></div>
-          <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Carregando <strong>Nutri Rodrigues</strong>...</p>
+      <div className="global-loader-screen">
+        <div className="loader-card-morph morph-shape">
+          <div className="spinner-emerald"></div>
+          <p className="loader-text">
+            Iniciando <strong>Nutri Rodrigues</strong>...
+          </p>
+          <span className="loader-subtext">Nutrição & Bem-Estar em Tempo Real</span>
         </div>
       </div>
     );
@@ -65,17 +55,12 @@ export default function App() {
     <>
       <PWAInstallPrompt />
 
-      {screen === 'dashboard' && session ? (
+      {session ? (
         <Dashboard user={session.user} onLogout={handleLogout} />
-      ) : screen === 'register' ? (
-        <RegisterScreen
-          onNavigateLogin={() => setScreen('login')}
-          onRegisterSuccess={handleRegisterSuccess}
-        />
       ) : (
-        <LoginScreen
-          onNavigateRegister={() => setScreen('register')}
+        <LandingHeroShowcase
           onLoginSuccess={handleLoginSuccess}
+          onRegisterSuccess={handleRegisterSuccess}
         />
       )}
     </>

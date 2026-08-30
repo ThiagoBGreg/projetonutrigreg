@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import HeaderLogo from './HeaderLogo';
-import { User, Mail, Lock, Eye, EyeOff, AlertCircle, Stethoscope } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, AlertCircle, Stethoscope, ArrowRight, Sparkles } from 'lucide-react';
 import { signUpUser } from '../lib/neon';
 
-export default function RegisterScreen({ onNavigateLogin, onRegisterSuccess }) {
+export default function RegisterScreen({ onNavigateLogin, onRegisterSuccess, isEmbedded = false }) {
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -51,141 +51,155 @@ export default function RegisterScreen({ onNavigateLogin, onRegisterSuccess }) {
     }
   };
 
-  return (
-    <div className="auth-container">
-      <HeaderLogo />
-
-      <div className="auth-card">
-        <div className="auth-card-header">
-          <h2 className="auth-card-title">Cadastro de Nutricionista</h2>
-          <p className="auth-card-subtitle">Crie sua conta profissional para gerenciar seu consultório</p>
+  const content = (
+    <div className={`auth-card ${isEmbedded ? 'auth-card-embedded' : 'morph-card'}`}>
+      {!isEmbedded && (
+        <div className="auth-card-brand-top">
+          <HeaderLogo />
         </div>
+      )}
 
-        {error && (
-          <div className="alert-box alert-error">
-            <AlertCircle size={18} />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="reg-nome">
-              Nome Completo (Profissional)
-            </label>
-            <div className="input-wrapper">
-              <span className="input-icon">
-                <User size={18} />
-              </span>
-              <input
-                id="reg-nome"
-                type="text"
-                className="form-input"
-                placeholder="Dr(a). Gregory Rodrigues"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label" htmlFor="reg-email">
-              Email Profissional
-            </label>
-            <div className="input-wrapper">
-              <span className="input-icon">
-                <Mail size={18} />
-              </span>
-              <input
-                id="reg-email"
-                type="email"
-                className="form-input"
-                placeholder="seu.email@exemplo.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label" htmlFor="reg-password">Senha (mínimo 9 caracteres)</label>
-            <div className="input-wrapper">
-              <span className="input-icon">
-                <Lock size={18} />
-              </span>
-              <input
-                id="reg-password"
-                type={showPassword ? 'text' : 'password'}
-                className="form-input"
-                placeholder="•••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                minLength={9}
-                required
-                autoComplete="new-password"
-              />
-              <button
-                type="button"
-                className="toggle-password-btn"
-                onClick={() => setShowPassword(!showPassword)}
-                title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label" htmlFor="reg-confirm-password">Confirmar Senha</label>
-            <div className="input-wrapper">
-              <span className="input-icon">
-                <Lock size={18} />
-              </span>
-              <input
-                id="reg-confirm-password"
-                type={showPassword ? 'text' : 'password'}
-                className="form-input"
-                placeholder="•••••••••"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                minLength={9}
-                required
-                autoComplete="new-password"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <span className="spinner"></span>
-                <span>Criando conta...</span>
-              </>
-            ) : (
-              <span>Cadastrar como Nutricionista</span>
-            )}
-          </button>
-        </form>
-
-        <div className="auth-footer">
-          Já tem conta?
-          <span
-            className="auth-footer-link"
-            onClick={onNavigateLogin}
-            role="button"
-            tabIndex={0}
-          >
-            Faça login
-          </span>
+      <div className="auth-card-header">
+        <div className="auth-icon-badge morph-circle">
+          <Stethoscope size={20} color="#10b981" />
         </div>
+        <h2 className="auth-card-title">Cadastro de Nutricionista</h2>
+        <p className="auth-card-subtitle">Crie seu consultório digital em instantes</p>
       </div>
+
+      {error && (
+        <div className="alert-box alert-error morph-alert">
+          <AlertCircle size={18} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="auth-form-body">
+        <div className="form-group">
+          <label className="form-label" htmlFor="register-nome">Nome Completo</label>
+          <div className="input-wrapper morph-input">
+            <span className="input-icon">
+              <User size={18} />
+            </span>
+            <input
+              id="register-nome"
+              type="text"
+              className="form-input"
+              placeholder="Dr(a). Seu Nome"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              required
+              autoComplete="name"
+            />
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label" htmlFor="register-email">Email Profissional</label>
+          <div className="input-wrapper morph-input">
+            <span className="input-icon">
+              <Mail size={18} />
+            </span>
+            <input
+              id="register-email"
+              type="email"
+              className="form-input"
+              placeholder="seu.email@nutricao.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label" htmlFor="register-password">Senha (mínimo 9 caracteres)</label>
+          <div className="input-wrapper morph-input">
+            <span className="input-icon">
+              <Lock size={18} />
+            </span>
+            <input
+              id="register-password"
+              type={showPassword ? 'text' : 'password'}
+              className="form-input"
+              placeholder="•••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={9}
+              autoComplete="new-password"
+            />
+            <button
+              type="button"
+              className="toggle-password-btn morph-btn-icon"
+              onClick={() => setShowPassword(!showPassword)}
+              title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label" htmlFor="register-confirm-password">Confirmar Senha</label>
+          <div className="input-wrapper morph-input">
+            <span className="input-icon">
+              <Lock size={18} />
+            </span>
+            <input
+              id="register-confirm-password"
+              type={showPassword ? 'text' : 'password'}
+              className="form-input"
+              placeholder="•••••••••"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              minLength={9}
+              autoComplete="new-password"
+            />
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          className="btn-primary morph-btn glow-btn"
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <span className="spinner"></span>
+              <span>Criando conta...</span>
+            </>
+          ) : (
+            <>
+              <span>Criar Conta e Acessar</span>
+              <ArrowRight size={18} />
+            </>
+          )}
+        </button>
+      </form>
+
+      <div className="auth-footer">
+        <span>Já possui uma conta?</span>
+        <button
+          type="button"
+          className="auth-footer-link morph-link"
+          onClick={onNavigateLogin}
+        >
+          Faça login
+        </button>
+      </div>
+    </div>
+  );
+
+  if (isEmbedded) {
+    return content;
+  }
+
+  return (
+    <div className="auth-container standalone-auth">
+      {content}
     </div>
   );
 }
