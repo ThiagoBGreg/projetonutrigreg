@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LandingHeroShowcase from './components/LandingHeroShowcase';
 import Dashboard from './components/Dashboard';
+import PatientDashboard from './components/PatientDashboard';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { getActiveSession } from './lib/neon';
 
@@ -56,7 +57,11 @@ export default function App() {
       <PWAInstallPrompt />
 
       {session ? (
-        <Dashboard user={session.user} onLogout={handleLogout} />
+        session.role === 'patient' || session.user?.isPatient ? (
+          <PatientDashboard user={session.user} onLogout={handleLogout} />
+        ) : (
+          <Dashboard user={session.user} onLogout={handleLogout} />
+        )
       ) : (
         <LandingHeroShowcase
           onLoginSuccess={handleLoginSuccess}

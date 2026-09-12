@@ -25,7 +25,13 @@ import {
   Pencil,
   Trash2,
   X,
-  MessageSquare
+  MessageSquare,
+  KeyRound,
+  Copy,
+  Check,
+  Sparkles,
+  RefreshCw,
+  Send
 } from 'lucide-react';
 import {
   getPacientesList,
@@ -36,6 +42,8 @@ import {
 import PatientProfile from './PatientProfile';
 
 /* Formatação e utilitários */
+const generateRandom5DigitKey = () => Math.floor(10000 + Math.random() * 90000).toString();
+
 function calculateAge(birthDateStr) {
   if (!birthDateStr) return null;
   const birthDate = new Date(birthDateStr);
@@ -156,6 +164,7 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
     telefone: '',
     whatsapp: '',
     email: '',
+    chave_acesso: generateRandom5DigitKey(),
     peso: '',
     altura: '',
     objetivos_selecionados: [],
@@ -206,6 +215,32 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
     }
   }, [newPatientTrigger]);
 
+  /* Copiar chave com feedback */
+  const handleCopyKey = (keyToCopy) => {
+    if (!keyToCopy) return;
+    try {
+      navigator.clipboard?.writeText(keyToCopy);
+      setSuccessMessage(`Chave de acesso "${keyToCopy}" copiada com sucesso!`);
+      setTimeout(() => setSuccessMessage(''), 3500);
+    } catch (e) {
+      setSuccessMessage(`Chave: ${keyToCopy}`);
+    }
+  };
+
+  /* Enviar Chave via WhatsApp */
+  const handleSendWhatsAppKey = (patientName, key, phone) => {
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    const msg = encodeURIComponent(
+      `Olá ${patientName || 'Paciente'}! Segue sua chave de 5 dígitos para acessar o seu Portal do Paciente Nutri Rodrigues:\n\n` +
+      `🔑 *Chave de Acesso:* ${key}\n\n` +
+      `Acesse seu cardápio semanal e orientações em:\nhttps://nutristerodrigues.vercel.app/`
+    );
+    const url = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=55${cleanPhone}&text=${msg}`
+      : `https://api.whatsapp.com/send?text=${msg}`;
+    window.open(url, '_blank');
+  };
+
   /* Resetar formulário */
   const resetForm = () => {
     setFormData({
@@ -215,6 +250,7 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
       telefone: '',
       whatsapp: '',
       email: '',
+      chave_acesso: generateRandom5DigitKey(),
       peso: '',
       altura: '',
       objetivos_selecionados: [],
@@ -259,6 +295,7 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
         telefone: patientToEdit.telefone || '',
         whatsapp: patientToEdit.whatsapp || patientToEdit.telefone || '',
         email: patientToEdit.email || '',
+        chave_acesso: patientToEdit.chave_acesso || generateRandom5DigitKey(),
         peso: patientToEdit.peso ? String(patientToEdit.peso) : '',
         altura: patientToEdit.altura ? String(patientToEdit.altura) : '',
         objetivos_selecionados: objList.filter(o => DEFAULT_OBJECTIVES.includes(o)),
@@ -355,6 +392,8 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
         ...(formData.alergia_outra.trim() ? [formData.alergia_outra.trim()] : [])
       ].join(', ');
 
+      const cleanChave = String(formData.chave_acesso || generateRandom5DigitKey()).replace(/\D/g, '').slice(0, 5);
+
       const payload = {
         nome: formData.nome.trim(),
         data_nascimento: formData.data_nascimento || null,
@@ -362,6 +401,7 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
         telefone: formData.telefone,
         whatsapp: formData.whatsapp || formData.telefone,
         email: formData.email,
+        chave_acesso: cleanChave,
         peso: formData.peso ? parseFloat(formData.peso) : null,
         altura: formData.altura ? parseFloat(formData.altura) : null,
         imc: imc ? parseFloat(imc) : null,
@@ -393,7 +433,7 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
         setSuccessMessage(`Paciente "${savedPatient.nome}" atualizado com sucesso!`);
       } else {
         savedPatient = await createPaciente(payload, user?.id || 'demo');
-        setSuccessMessage(`Paciente "${savedPatient.nome}" cadastrado com sucesso!`);
+        setSuccessMessage(`Paciente "${savedPatient.nome}" cadastrado com sucesso! Chave de acesso: ${savedPatient.chave_acesso}`);
       }
 
       // Recarregar lista
@@ -405,7 +445,7 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
         setActivePatient(savedPatient);
         setViewState('profile');
         setSuccessMessage('');
-      }, 1000);
+      }, 1200);
 
     } catch (err) {
       console.error('Erro ao salvar paciente:', err);
@@ -429,7 +469,8 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
   const filteredPacientes = pacientes.filter(p =>
     p.nome.toLowerCase().includes(search.toLowerCase()) ||
     (p.email && p.email.toLowerCase().includes(search.toLowerCase())) ||
-    (p.objetivo && p.objetivo.toLowerCase().includes(search.toLowerCase()))
+    (p.objetivo && p.objetivo.toLowerCase().includes(search.toLowerCase())) ||
+    (p.chave_acesso && String(p.chave_acesso).includes(search))
   );
 
   const calculatedAgeVal = calculateAge(formData.data_nascimento);
@@ -601,6 +642,63 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     />
+                  </div>
+
+                  {/* Campo de Chave de Acesso de 5 Dígitos para o Paciente */}
+                  <div className="form-group full-width">
+                    <label className="form-label">
+                      <KeyRound size={16} color="#06b6d4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: '6px' }} />
+                      Chave de Acesso do Paciente (5 Dígitos para Login) *
+                    </label>
+                    <div className="patient-access-key-box morph-card-mini">
+                      <div className="key-input-main">
+                        <input
+                          type="text"
+                          maxLength={5}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          className="form-input key-5digit-input"
+                          value={formData.chave_acesso}
+                          onChange={(e) => {
+                            const num = e.target.value.replace(/\D/g, '').slice(0, 5);
+                            setFormData({ ...formData, chave_acesso: num });
+                          }}
+                          placeholder="Ex: 76460"
+                          required
+                        />
+                        <button
+                          type="button"
+                          className="btn-key-action btn-generate-key"
+                          onClick={() => setFormData({ ...formData, chave_acesso: generateRandom5DigitKey() })}
+                          title="Gerar nova chave aleatória de 5 dígitos"
+                        >
+                          <RefreshCw size={15} />
+                          <span>Gerar Nova</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-key-action btn-copy-key"
+                          onClick={() => handleCopyKey(formData.chave_acesso)}
+                          title="Copiar chave de acesso"
+                        >
+                          <Copy size={15} />
+                          <span>Copiar</span>
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn-key-whatsapp"
+                        onClick={() => handleSendWhatsAppKey(formData.nome, formData.chave_acesso, formData.whatsapp || formData.telefone)}
+                        title="Enviar chave e link de login diretamente para o WhatsApp do paciente"
+                      >
+                        <Send size={15} />
+                        <span>Enviar Acesso via WhatsApp</span>
+                      </button>
+                    </div>
+                    <span className="field-hint-key-sub">
+                      Esta chave numérica de 5 dígitos permite que o paciente acesse exclusivamente o próprio plano alimentar e metas no Portal do Paciente.
+                    </span>
                   </div>
                 </div>
 
@@ -1052,6 +1150,7 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
                 <thead>
                   <tr>
                     <th>Nome do Paciente</th>
+                    <th>Chave de Acesso</th>
                     <th>Objetivo</th>
                     <th>Última Consulta</th>
                     <th>Ações</th>
@@ -1073,6 +1172,34 @@ export default function PatientsView({ user, selectedPatientId, onBackToDashboar
                         <div>
                           <span className="name-text">{p.nome}</span>
                           <span className="sub-contact-text">{p.email || p.telefone || 'Sem contato extra'}</span>
+                        </div>
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div className="table-key-wrapper">
+                          <span className="table-key-badge" title="Chave de acesso de 5 dígitos para o Portal do Paciente">
+                            <KeyRound size={13} color="#06b6d4" />
+                            <strong>{p.chave_acesso || '—'}</strong>
+                          </span>
+                          {p.chave_acesso && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn-table-icon-action"
+                                onClick={() => handleCopyKey(p.chave_acesso)}
+                                title="Copiar Chave de Acesso"
+                              >
+                                <Copy size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-table-icon-action btn-wa-action"
+                                onClick={() => handleSendWhatsAppKey(p.nome, p.chave_acesso, p.whatsapp || p.telefone)}
+                                title="Enviar Chave de Acesso via WhatsApp"
+                              >
+                                <Send size={13} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                       <td>

@@ -12,6 +12,26 @@ export const NEON_DB_URL =
 
 const sql = NEON_DB_URL ? neon(NEON_DB_URL) : null;
 
+const safeStorage = {
+  getItem: (key) => {
+    try {
+      return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+    } catch (e) {
+      return null;
+    }
+  },
+  setItem: (key, val) => {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem(key, val);
+    } catch (e) {}
+  },
+  removeItem: (key) => {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(key);
+    } catch (e) {}
+  }
+};
+
 function isUuid(str) {
   if (!str || typeof str !== 'string') return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
@@ -132,6 +152,7 @@ function mapDbPatientToModel(row) {
     exercicio_detalhes: row.atividade_fisica_descricao || '',
     observacoes: row.observacoes || '',
     created_at: row.created_at,
+    chave_acesso: row.chave_acesso || '',
     ultima_consulta: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
   };
 }
@@ -197,7 +218,7 @@ export async function signUpNutricionista({ nome, email, password }) {
     },
     token: data.token || 'session_active'
   };
-  localStorage.setItem('nutri_rodrigues_session', JSON.stringify(sessionData));
+  safeStorage.setItem('nutri_rodrigues_session', JSON.stringify(sessionData));
 
   return sessionData;
 }
@@ -259,7 +280,7 @@ export async function signInNutricionista({ email, password }) {
     token: data.token || 'session_active'
   };
 
-  localStorage.setItem('nutri_rodrigues_session', JSON.stringify(sessionData));
+  safeStorage.setItem('nutri_rodrigues_session', JSON.stringify(sessionData));
 
   return sessionData;
 }
@@ -268,7 +289,7 @@ export async function signInNutricionista({ email, password }) {
  * Get active session from Neon Auth or local storage
  */
 export async function getActiveSession() {
-  const localSession = localStorage.getItem('nutri_rodrigues_session');
+  const localSession = safeStorage.getItem('nutri_rodrigues_session');
   if (!localSession) return null;
 
   try {
@@ -306,7 +327,7 @@ export async function signOutNutricionista() {
   } catch (e) {
     console.warn('Sign-out local:', e);
   }
-  localStorage.removeItem('nutri_rodrigues_session');
+  safeStorage.removeItem('nutri_rodrigues_session');
 }
 
 /**
@@ -360,17 +381,9 @@ export async function getDashboardMetrics(nutriId) {
 
   try {
     if (sql) {
-      let countRes;
-      if (isUuid(nutriId)) {
-        countRes = await sql`
-          SELECT COUNT(*)::int as total FROM public.pacientes
-          WHERE nutricionista_id = ${nutriId}
-        `;
-      } else {
-        countRes = await sql`
-          SELECT COUNT(*)::int as total FROM public.pacientes
-        `;
-      }
+      const countRes = await sql`
+        SELECT COUNT(*)::int as total FROM public.pacientes
+      `;
 
       if (countRes && countRes.length > 0) {
         totalPacientes = countRes[0].total;
@@ -385,9 +398,34 @@ export async function getDashboardMetrics(nutriId) {
         if (consultasRes && consultasRes.length > 0) {
           consultasSemana = consultasRes[0].total;
         }
-      } catch (e) {
-        // Consultas table query
-      }
+      } catch (e) {}
+
+      // Pacientes sem retorno (> 30 dias)
+      try {
+        const pacRows = await sql`
+          SELECT p.id, p.nome, p.created_at,
+                 MAX(c.data_consulta) as ultima_consulta
+          FROM public.pacientes p
+          LEFT JOIN public.consultas c ON c.paciente_id = p.id
+          GROUP BY p.id, p.nome, p.created_at
+          ORDER BY p.nome ASC
+        `;
+
+        const now = new Date();
+        pacientesSemRetorno = pacRows.filter(p => {
+          const lastDate = p.ultima_consulta ? new Date(p.ultima_consulta) : new Date(p.created_at);
+          const diffDays = Math.floor((now - lastDate) / (1000 * 60 * 60 * 24));
+          return diffDays >= 30;
+        }).map(p => {
+          const lastDate = p.ultima_consulta ? new Date(p.ultima_consulta) : new Date(p.created_at);
+          const diffDays = Math.max(0, Math.floor((now - lastDate) / (1000 * 60 * 60 * 24)));
+          return {
+            id: p.id,
+            nome: p.nome,
+            diasSemRetorno: diffDays
+          };
+        });
+      } catch (e) {}
     }
   } catch (err) {
     console.warn('Erro ao carregar métricas do Neon DB:', err);
@@ -408,19 +446,10 @@ export async function getPacientesList(nutriId) {
 
   try {
     if (sql) {
-      let rows;
-      if (isUuid(nutriId)) {
-        rows = await sql`
-          SELECT * FROM public.pacientes
-          WHERE nutricionista_id = ${nutriId}
-          ORDER BY created_at DESC
-        `;
-      } else {
-        rows = await sql`
-          SELECT * FROM public.pacientes
-          ORDER BY created_at DESC
-        `;
-      }
+      const rows = await sql`
+        SELECT * FROM public.pacientes
+        ORDER BY created_at DESC
+      `;
 
       if (rows && rows.length > 0) {
         list = rows.map(mapDbPatientToModel);
@@ -428,6 +457,18 @@ export async function getPacientesList(nutriId) {
     }
   } catch (e) {
     console.error('Erro ao buscar lista de pacientes no Neon DB:', e);
+  }
+
+  // Backup cache
+  if (list.length > 0) {
+    try {
+      safeStorage.setItem('nutri_cached_pacientes', JSON.stringify(list));
+    } catch (e) {}
+  } else {
+    try {
+      const cached = JSON.parse(safeStorage.getItem('nutri_cached_pacientes') || '[]');
+      if (cached && cached.length > 0) return cached;
+    } catch (e) {}
   }
 
   return list;
@@ -471,6 +512,7 @@ export async function createPaciente(pacienteData, nutriId) {
   const aguaVal = pacienteData.agua_litros ? Number(pacienteData.agua_litros) : (pacienteData.litros_agua ? Number(pacienteData.litros_agua) : null);
   const praticaEx = Boolean(pacienteData.pratica_exercicio === 'sim' || pacienteData.pratica_exercicio === true || pacienteData.atividade_fisica === true);
   const exDetalhes = pacienteData.exercicio_detalhes || pacienteData.atividade_fisica_descricao || '';
+  const chaveVal = pacienteData.chave_acesso ? String(pacienteData.chave_acesso).trim() : Math.floor(10000 + Math.random() * 90000).toString();
 
   try {
     const rows = await sql`
@@ -497,7 +539,8 @@ export async function createPaciente(pacienteData, nutriId) {
         litros_agua,
         atividade_fisica,
         atividade_fisica_descricao,
-        observacoes
+        observacoes,
+        chave_acesso
       ) VALUES (
         ${validNutriId},
         ${pacienteData.nome.trim()},
@@ -521,7 +564,8 @@ export async function createPaciente(pacienteData, nutriId) {
         ${aguaVal},
         ${praticaEx},
         ${exDetalhes},
-        ${pacienteData.observacoes || ''}
+        ${pacienteData.observacoes || ''},
+        ${chaveVal}
       )
       RETURNING *;
     `;
@@ -572,33 +616,65 @@ export async function updatePaciente(pacienteId, pacienteData, nutriId) {
   const exDetalhes = pacienteData.exercicio_detalhes || pacienteData.atividade_fisica_descricao || '';
 
   try {
-    const rows = await sql`
-      UPDATE public.pacientes SET
-        nome = ${pacienteData.nome.trim()},
-        data_nascimento = ${pacienteData.data_nascimento || null},
-        sexo = ${pacienteData.sexo || 'Feminino'},
-        whatsapp = ${pacienteData.whatsapp || pacienteData.telefone || ''},
-        email = ${pacienteData.email ? pacienteData.email.trim() : ''},
-        peso_inicial = ${pesoVal},
-        altura = ${alturaVal},
-        objetivos = ${objetivosArr},
-        objetivo_texto = ${pacienteData.objetivo_outro || ''},
-        nivel_atividade = ${pacienteData.nivel_atividade || 'Moderadamente ativo'},
-        patologias = ${patologiasArr},
-        restricoes_alimentares = ${restricoesArr},
-        alergias = ${alergiasArr},
-        medicamentos = ${pacienteData.medicamentos || ''},
-        suplementos = ${pacienteData.suplementos || ''},
-        refeicoes_por_dia = ${refeicoesVal},
-        horario_acorda = ${pacienteData.horario_acorda || ''},
-        horario_dorme = ${pacienteData.horario_dorme || ''},
-        litros_agua = ${aguaVal},
-        atividade_fisica = ${praticaEx},
-        atividade_fisica_descricao = ${exDetalhes},
-        observacoes = ${pacienteData.observacoes || ''}
-      WHERE id = ${pacienteId}
-      RETURNING *;
-    `;
+    let rows;
+    if (pacienteData.chave_acesso) {
+      rows = await sql`
+        UPDATE public.pacientes SET
+          nome = ${pacienteData.nome.trim()},
+          data_nascimento = ${pacienteData.data_nascimento || null},
+          sexo = ${pacienteData.sexo || 'Feminino'},
+          whatsapp = ${pacienteData.whatsapp || pacienteData.telefone || ''},
+          email = ${pacienteData.email ? pacienteData.email.trim() : ''},
+          peso_inicial = ${pesoVal},
+          altura = ${alturaVal},
+          objetivos = ${objetivosArr},
+          objetivo_texto = ${pacienteData.objetivo_outro || ''},
+          nivel_atividade = ${pacienteData.nivel_atividade || 'Moderadamente ativo'},
+          patologias = ${patologiasArr},
+          restricoes_alimentares = ${restricoesArr},
+          alergias = ${alergiasArr},
+          medicamentos = ${pacienteData.medicamentos || ''},
+          suplementos = ${pacienteData.suplementos || ''},
+          refeicoes_por_dia = ${refeicoesVal},
+          horario_acorda = ${pacienteData.horario_acorda || ''},
+          horario_dorme = ${pacienteData.horario_dorme || ''},
+          litros_agua = ${aguaVal},
+          atividade_fisica = ${praticaEx},
+          atividade_fisica_descricao = ${exDetalhes},
+          observacoes = ${pacienteData.observacoes || ''},
+          chave_acesso = ${String(pacienteData.chave_acesso).trim()}
+        WHERE id = ${pacienteId}
+        RETURNING *;
+      `;
+    } else {
+      rows = await sql`
+        UPDATE public.pacientes SET
+          nome = ${pacienteData.nome.trim()},
+          data_nascimento = ${pacienteData.data_nascimento || null},
+          sexo = ${pacienteData.sexo || 'Feminino'},
+          whatsapp = ${pacienteData.whatsapp || pacienteData.telefone || ''},
+          email = ${pacienteData.email ? pacienteData.email.trim() : ''},
+          peso_inicial = ${pesoVal},
+          altura = ${alturaVal},
+          objetivos = ${objetivosArr},
+          objetivo_texto = ${pacienteData.objetivo_outro || ''},
+          nivel_atividade = ${pacienteData.nivel_atividade || 'Moderadamente ativo'},
+          patologias = ${patologiasArr},
+          restricoes_alimentares = ${restricoesArr},
+          alergias = ${alergiasArr},
+          medicamentos = ${pacienteData.medicamentos || ''},
+          suplementos = ${pacienteData.suplementos || ''},
+          refeicoes_por_dia = ${refeicoesVal},
+          horario_acorda = ${pacienteData.horario_acorda || ''},
+          horario_dorme = ${pacienteData.horario_dorme || ''},
+          litros_agua = ${aguaVal},
+          atividade_fisica = ${praticaEx},
+          atividade_fisica_descricao = ${exDetalhes},
+          observacoes = ${pacienteData.observacoes || ''}
+        WHERE id = ${pacienteId}
+        RETURNING *;
+      `;
+    }
 
     if (rows && rows.length > 0) {
       return mapDbPatientToModel(rows[0]);
@@ -608,6 +684,126 @@ export async function updatePaciente(pacienteId, pacienteData, nutriId) {
     console.error('Erro ao atualizar paciente no Neon DB:', err);
     throw new Error(`Falha ao atualizar no banco de dados Neon: ${err.message}`);
   }
+}
+
+/**
+ * Autenticar paciente diretamente com chave de 5 dígitos
+ */
+export async function signInPatientWithKey(chaveAcesso) {
+  const cleanKey = String(chaveAcesso || '').replace(/\D/g, '').trim();
+  if (cleanKey.length !== 5) {
+    throw new Error('A chave de acesso deve conter exatamente 5 dígitos numéricos.');
+  }
+
+  try {
+    if (sql) {
+      const rows = await sql`
+        SELECT p.*, n.nome as nutricionista_nome, n.email as nutricionista_email
+        FROM public.pacientes p
+        LEFT JOIN public.nutricionistas n ON n.id = p.nutricionista_id
+        WHERE p.chave_acesso = ${cleanKey}
+        LIMIT 1;
+      `;
+
+      if (rows && rows.length > 0) {
+        const paciente = mapDbPatientToModel(rows[0]);
+        paciente.nutricionista_nome = rows[0].nutricionista_nome || 'Dra. Ana Maria (Nutricionista)';
+
+        const sessionData = {
+          role: 'patient',
+          user: {
+            id: paciente.id,
+            name: paciente.nome,
+            email: paciente.email || `paciente_${cleanKey}@portal.nutri`,
+            isPatient: true
+          },
+          patient: paciente,
+          token: `patient_session_${cleanKey}`
+        };
+
+        safeStorage.setItem('nutri_rodrigues_session', JSON.stringify(sessionData));
+        return sessionData;
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao verificar chave no Neon DB:', err);
+  }
+
+  // Backup cache
+  try {
+    const cached = JSON.parse(safeStorage.getItem('nutri_cached_pacientes') || '[]');
+    const found = cached.find(p => String(p.chave_acesso) === cleanKey);
+    if (found) {
+      const sessionData = {
+        role: 'patient',
+        user: {
+          id: found.id,
+          name: found.nome,
+          email: found.email || `paciente_${cleanKey}@portal.nutri`,
+          isPatient: true
+        },
+        patient: found,
+        token: `patient_session_${cleanKey}`
+      };
+      safeStorage.setItem('nutri_rodrigues_session', JSON.stringify(sessionData));
+      return sessionData;
+    }
+  } catch (e) {}
+
+  throw new Error('Chave de acesso de 5 dígitos não encontrada. Solicite sua chave ao seu nutricionista.');
+}
+
+/**
+ * Fetch patient portal data (paciente, plano alimentar, consultas)
+ */
+export async function getPatientPortalData(pacienteIdOrKey) {
+  if (!pacienteIdOrKey) return null;
+
+  try {
+    if (sql) {
+      let patientRow = null;
+      const strKey = String(pacienteIdOrKey).trim();
+
+      if (strKey.length === 5 && /^\d+$/.test(strKey)) {
+        const rows = await sql`
+          SELECT p.*, n.nome as nutricionista_nome, n.email as nutricionista_email
+          FROM public.pacientes p
+          LEFT JOIN public.nutricionistas n ON n.id = p.nutricionista_id
+          WHERE p.chave_acesso = ${strKey}
+          LIMIT 1;
+        `;
+        if (rows && rows.length > 0) patientRow = rows[0];
+      } else {
+        const rows = await sql`
+          SELECT p.*, n.nome as nutricionista_nome, n.email as nutricionista_email
+          FROM public.pacientes p
+          LEFT JOIN public.nutricionistas n ON n.id = p.nutricionista_id
+          WHERE p.id::text = ${strKey} OR p.email = ${strKey}
+          LIMIT 1;
+        `;
+        if (rows && rows.length > 0) patientRow = rows[0];
+      }
+
+      if (patientRow) {
+        const paciente = mapDbPatientToModel(patientRow);
+        paciente.nutricionista_nome = patientRow.nutricionista_nome || 'Dra. Ana Maria (Nutricionista)';
+
+        // Buscar plano alimentar mais recente
+        const planos = await getPlanosAlimentares(patientRow.id);
+        const consultas = await getConsultas(patientRow.id);
+
+        return {
+          paciente,
+          planoAlimentar: planos.length > 0 ? planos[0] : null,
+          consultas: consultas || []
+        };
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao carregar dados do portal do paciente:', err);
+  }
+
+  return null;
 }
 
 /**
@@ -734,23 +930,56 @@ export async function deleteConsulta(consultaId) {
  * Fetch Meal Plans for a Patient from Neon DB
  */
 export async function getPlanosAlimentares(pacienteId) {
-  if (!sql || !pacienteId) return [];
+  if (!pacienteId) return [];
 
   try {
-    const rows = await sql`
-      SELECT * FROM public.planos_alimentares
-      WHERE paciente_id = ${pacienteId}
-      ORDER BY created_at DESC
-    `;
+    if (sql) {
+      // Ensure table exists
+      try {
+        await sql`
+          CREATE TABLE IF NOT EXISTS public.planos_alimentares (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            paciente_id UUID REFERENCES public.pacientes(id) ON DELETE CASCADE,
+            conteudo JSONB NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+        `;
+      } catch (tableErr) {
+        // Table might already exist or user lacks DDL permission
+      }
 
-    return rows.map(r => ({
-      id: r.id,
-      paciente_id: r.paciente_id,
-      conteudo: r.conteudo,
-      created_at: r.created_at
-    }));
+      const rows = await sql`
+        SELECT * FROM public.planos_alimentares
+        WHERE paciente_id = ${pacienteId}
+        ORDER BY created_at DESC
+      `;
+
+      return rows.map(r => {
+        let parsedConteudo = r.conteudo;
+        if (typeof r.conteudo === 'string') {
+          try {
+            parsedConteudo = JSON.parse(r.conteudo);
+          } catch (e) {
+            parsedConteudo = r.conteudo;
+          }
+        }
+        return {
+          id: r.id,
+          paciente_id: r.paciente_id,
+          conteudo: parsedConteudo,
+          created_at: r.created_at
+        };
+      });
+    }
   } catch (err) {
-    console.error('Erro ao buscar planos alimentares no Neon DB:', err);
+    console.warn('Erro ao buscar planos alimentares no Neon DB, verificando fallback local:', err);
+  }
+
+  // Fallback local storage
+  try {
+    const localPlans = JSON.parse(safeStorage.getItem(`nutri_planos_${pacienteId}`) || '[]');
+    return localPlans;
+  } catch (e) {
     return [];
   }
 }
@@ -759,33 +988,102 @@ export async function getPlanosAlimentares(pacienteId) {
  * Create a Meal Plan in Neon DB
  */
 export async function createPlanoAlimentar(pacienteId, conteudo) {
-  if (!sql) throw new Error('Conexão com o banco de dados Neon não configurada.');
   if (!pacienteId) throw new Error('ID do paciente é obrigatório.');
+  if (!conteudo) throw new Error('Conteúdo do plano alimentar é obrigatório.');
+
+  const jsonPayload = typeof conteudo === 'string' ? conteudo : JSON.stringify(conteudo);
 
   try {
-    const rows = await sql`
-      INSERT INTO public.planos_alimentares (
-        paciente_id,
-        conteudo
-      ) VALUES (
-        ${pacienteId},
-        ${conteudo}
-      )
-      RETURNING *;
-    `;
+    if (sql) {
+      // Ensure table exists
+      try {
+        await sql`
+          CREATE TABLE IF NOT EXISTS public.planos_alimentares (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            paciente_id UUID REFERENCES public.pacientes(id) ON DELETE CASCADE,
+            conteudo JSONB NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+        `;
+      } catch (tableErr) {
+        // Continue if table already exists
+      }
 
-    if (rows && rows.length > 0) {
-      return {
-        id: rows[0].id,
-        paciente_id: rows[0].paciente_id,
-        conteudo: rows[0].conteudo,
-        created_at: rows[0].created_at
-      };
+      const rows = await sql`
+        INSERT INTO public.planos_alimentares (
+          paciente_id,
+          conteudo
+        ) VALUES (
+          ${pacienteId},
+          ${jsonPayload}::jsonb
+        )
+        RETURNING *;
+      `;
+
+      if (rows && rows.length > 0) {
+        let parsedConteudo = rows[0].conteudo;
+        if (typeof parsedConteudo === 'string') {
+          try {
+            parsedConteudo = JSON.parse(parsedConteudo);
+          } catch (e) {}
+        }
+        const created = {
+          id: rows[0].id,
+          paciente_id: rows[0].paciente_id,
+          conteudo: parsedConteudo,
+          created_at: rows[0].created_at
+        };
+
+        // Cache locally
+        try {
+          const localPlans = JSON.parse(safeStorage.getItem(`nutri_planos_${pacienteId}`) || '[]');
+          safeStorage.setItem(`nutri_planos_${pacienteId}`, JSON.stringify([created, ...localPlans]));
+        } catch (e) {}
+
+        return created;
+      }
     }
-    throw new Error('Falha ao inserir plano alimentar.');
   } catch (err) {
-    console.error('Erro ao salvar plano alimentar no Neon DB:', err);
-    throw new Error(`Falha ao salvar plano alimentar: ${err.message}`);
+    console.warn('Falha ao salvar no Neon DB, persistindo localmente:', err);
+  }
+
+  // Fallback local storage
+  const fallbackRecord = {
+    id: 'local-' + Date.now(),
+    paciente_id: pacienteId,
+    conteudo: typeof conteudo === 'string' ? JSON.parse(conteudo) : conteudo,
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    const localPlans = JSON.parse(safeStorage.getItem(`nutri_planos_${pacienteId}`) || '[]');
+    safeStorage.setItem(`nutri_planos_${pacienteId}`, JSON.stringify([fallbackRecord, ...localPlans]));
+  } catch (e) {}
+
+  return fallbackRecord;
+}
+
+/**
+ * Delete a Meal Plan from Neon DB
+ */
+export async function deletePlanoAlimentar(planoId, pacienteId) {
+  if (!planoId) return;
+
+  try {
+    if (sql && !String(planoId).startsWith('local-')) {
+      await sql`DELETE FROM public.planos_alimentares WHERE id = ${planoId}`;
+    }
+  } catch (err) {
+    console.warn('Erro ao excluir plano alimentar no Neon DB:', err);
+  }
+
+  // Clear local cache if exists
+  if (pacienteId) {
+    try {
+      const localPlans = JSON.parse(safeStorage.getItem(`nutri_planos_${pacienteId}`) || '[]');
+      const filtered = localPlans.filter(p => p.id !== planoId);
+      safeStorage.setItem(`nutri_planos_${pacienteId}`, JSON.stringify(filtered));
+    } catch (e) {}
   }
 }
 

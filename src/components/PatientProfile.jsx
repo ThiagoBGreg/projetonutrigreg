@@ -6,6 +6,7 @@ import {
   Save,
   Plus,
   Calendar,
+  CalendarCheck,
   Scale,
   Activity,
   HeartPulse,
@@ -25,7 +26,11 @@ import {
   Target,
   FileText,
   CalendarPlus,
-  Info
+  Info,
+  KeyRound,
+  Copy,
+  Send,
+  RefreshCw
 } from 'lucide-react';
 import {
   updatePaciente,
@@ -34,6 +39,7 @@ import {
   deleteConsulta,
   getPlanosAlimentares
 } from '../lib/neon';
+import MealPlanSection from './MealPlanSection';
 
 /* Utilitários de cálculo e formatação */
 function calculateAge(birthDateStr) {
@@ -370,6 +376,7 @@ export default function PatientProfile({
     telefone: '',
     whatsapp: '',
     email: '',
+    chave_acesso: '',
     peso: '',
     altura: '',
     objetivos_selecionados: [],
@@ -399,6 +406,30 @@ export default function PatientProfile({
   const [savingData, setSavingData] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  const handleCopyKey = (keyToCopy) => {
+    if (!keyToCopy) return;
+    try {
+      navigator.clipboard?.writeText(keyToCopy);
+      setSuccessMessage(`Chave de acesso "${keyToCopy}" copiada com sucesso!`);
+      setTimeout(() => setSuccessMessage(''), 3500);
+    } catch (e) {
+      setSuccessMessage(`Chave: ${keyToCopy}`);
+    }
+  };
+
+  const handleSendWhatsAppKey = (patientName, key, phone) => {
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    const msg = encodeURIComponent(
+      `Olá ${patientName || 'Paciente'}! Segue sua chave de 5 dígitos para acessar o seu Portal do Paciente Nutri Rodrigues:\n\n` +
+      `🔑 *Chave de Acesso:* ${key}\n\n` +
+      `Acesse seu cardápio semanal e orientações em:\nhttps://nutristerodrigues.vercel.app/`
+    );
+    const url = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=55${cleanPhone}&text=${msg}`
+      : `https://api.whatsapp.com/send?text=${msg}`;
+    window.open(url, '_blank');
+  };
 
   // Estados da Seção 2: Consultas
   const [consultas, setConsultas] = useState([]);
@@ -447,6 +478,7 @@ export default function PatientProfile({
         telefone: patient.telefone || patient.whatsapp || '',
         whatsapp: patient.whatsapp || patient.telefone || '',
         email: patient.email || '',
+        chave_acesso: patient.chave_acesso || '',
         peso: patient.peso ? String(patient.peso) : '',
         altura: patient.altura ? String(patient.altura) : '',
         objetivos_selecionados: objList.filter(o => DEFAULT_OBJECTIVES.includes(o)),
@@ -712,6 +744,28 @@ export default function PatientProfile({
               <span className="hero-tag">
                 <span>{formData.sexo}</span>
               </span>
+              {formData.chave_acesso && (
+                <span className="hero-tag tag-key-badge" title="Chave de 5 dígitos para login do paciente">
+                  <KeyRound size={14} color="#06b6d4" />
+                  <strong>Chave: {formData.chave_acesso}</strong>
+                  <button
+                    type="button"
+                    className="btn-badge-action"
+                    onClick={() => handleCopyKey(formData.chave_acesso)}
+                    title="Copiar Chave"
+                  >
+                    <Copy size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-badge-action btn-badge-wa"
+                    onClick={() => handleSendWhatsAppKey(formData.nome, formData.chave_acesso, formData.whatsapp || formData.telefone)}
+                    title="Enviar Chave via WhatsApp"
+                  >
+                    <Send size={12} />
+                  </button>
+                </span>
+              )}
               {formData.whatsapp && (
                 <span className="hero-tag">
                   <Phone size={14} />
@@ -766,7 +820,7 @@ export default function PatientProfile({
           className={`section-tab-btn ${activeSection === 'consultas' ? 'active' : ''}`}
           onClick={() => setActiveSection('consultas')}
         >
-          <CalendarCheckIcon size={18} />
+          <CalendarCheck size={18} />
           <span>2. Consultas & Evolução</span>
           {consultas.length > 0 && <span className="tab-count-badge">{consultas.length}</span>}
         </button>
@@ -884,6 +938,59 @@ export default function PatientProfile({
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     />
+                  </div>
+
+                  {/* Campo de Chave de Acesso de 5 Dígitos */}
+                  <div className="form-group full-width">
+                    <label className="form-label">
+                      <KeyRound size={16} color="#06b6d4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: '6px' }} />
+                      Chave de Acesso do Paciente (5 Dígitos para Login)
+                    </label>
+                    <div className="patient-access-key-box morph-card-mini">
+                      <div className="key-input-main">
+                        <input
+                          type="text"
+                          maxLength={5}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          className="form-input key-5digit-input"
+                          value={formData.chave_acesso}
+                          onChange={(e) => {
+                            const num = e.target.value.replace(/\D/g, '').slice(0, 5);
+                            setFormData({ ...formData, chave_acesso: num });
+                          }}
+                          placeholder="Ex: 76460"
+                        />
+                        <button
+                          type="button"
+                          className="btn-key-action btn-generate-key"
+                          onClick={() => setFormData({ ...formData, chave_acesso: Math.floor(10000 + Math.random() * 90000).toString() })}
+                          title="Gerar nova chave aleatória de 5 dígitos"
+                        >
+                          <RefreshCw size={15} />
+                          <span>Gerar Nova</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-key-action btn-copy-key"
+                          onClick={() => handleCopyKey(formData.chave_acesso)}
+                          title="Copiar chave de acesso"
+                        >
+                          <Copy size={15} />
+                          <span>Copiar</span>
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn-key-whatsapp"
+                        onClick={() => handleSendWhatsAppKey(formData.nome, formData.chave_acesso, formData.whatsapp || formData.telefone)}
+                        title="Enviar chave e link de login diretamente para o WhatsApp do paciente"
+                      >
+                        <Send size={15} />
+                        <span>Enviar Acesso via WhatsApp</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1374,83 +1481,14 @@ export default function PatientProfile({
       )}
 
       {/* ========================================================================= */}
-      {/* SEÇÃO 3: PLANOS ALIMENTARES (PROMPT 5)                                    */}
+      {/* SEÇÃO 3: PLANOS ALIMENTARES (PROMPT 6 - IA COM GEMINI & EDITOR SEMANAL)    */}
       {/* ========================================================================= */}
       {activeSection === 'planos' && (
         <div className="profile-section-card fade-in">
-          <div className="planos-section-header">
-            <div>
-              <h3 className="section-title">Planos Alimentares</h3>
-              <p className="section-subtitle">
-                Histórico de cardápios e dietas prescritas para {formData.nome}.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              className="btn-primary btn-generate-plan"
-              onClick={() => setShowGerarPlanoModal(true)}
-            >
-              <Sparkles size={18} />
-              <span>Gerar Plano Alimentar</span>
-            </button>
-          </div>
-
-          <div className="planos-list-container mt-4">
-            {loadingPlanos ? (
-              <div className="loading-state-box">
-                <div className="spinner"></div>
-                <p>Carregando planos alimentares do Neon...</p>
-              </div>
-            ) : planos.length === 0 ? (
-              <div className="empty-planos-card">
-                <Utensils size={40} color="#94a3b8" />
-                <h4>Nenhum plano alimentar gerado ainda</h4>
-                <p>Clique no botão acima para criar ou gerar o primeiro plano alimentar deste paciente.</p>
-                <button
-                  type="button"
-                  className="btn-primary mt-3"
-                  onClick={() => setShowGerarPlanoModal(true)}
-                >
-                  <Sparkles size={16} />
-                  <span>Gerar Plano Alimentar</span>
-                </button>
-              </div>
-            ) : (
-              <div className="planos-grid">
-                {planos.map((plano, idx) => (
-                  <div
-                    key={plano.id || idx}
-                    className="plano-card fade-in"
-                    onClick={() => setSelectedPlanoModal(plano)}
-                  >
-                    <div className="plano-card-header">
-                      <div className="plano-icon-badge">
-                        <Utensils size={18} color="#10b981" />
-                      </div>
-                      <span className="plano-date-tag">
-                        {formatDate(plano.created_at)}
-                      </span>
-                    </div>
-
-                    <h4 className="plano-card-title">
-                      {plano.conteudo?.titulo || `Plano Alimentar #${planos.length - idx}`}
-                    </h4>
-
-                    <p className="plano-card-summary">
-                      {plano.conteudo?.descricao || plano.conteudo?.calorias_meta
-                        ? `Meta: ${plano.conteudo?.calorias_meta} kcal • ${plano.conteudo?.refeicoes?.length || 4} refeições diárias`
-                        : 'Clique para visualizar os detalhes completos do plano alimentar prescrito.'}
-                    </p>
-
-                    <div className="plano-card-footer">
-                      <span className="view-plano-link">Ver conteúdo completo &rarr;</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <MealPlanSection
+            patient={{ ...patient, ...formData }}
+            user={user}
+          />
         </div>
       )}
 
@@ -1604,114 +1642,6 @@ export default function PatientProfile({
           </div>
         </div>
       )}
-
-      {/* ========================================================================= */}
-      {/* MODAL: VISUALIZAR CONTEÚDO DO PLANO ALIMENTAR                             */}
-      {/* ========================================================================= */}
-      {selectedPlanoModal && (
-        <div className="modal-overlay fade-in" onClick={() => setSelectedPlanoModal(null)}>
-          <div className="modal-card modal-plano-viewer" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title-row">
-                <Utensils size={20} color="#10b981" />
-                <h3>{selectedPlanoModal.conteudo?.titulo || 'Plano Alimentar'}</h3>
-              </div>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setSelectedPlanoModal(null)}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <div className="plano-meta-info">
-                <span>Registrado em: <strong>{formatDate(selectedPlanoModal.created_at)}</strong></span>
-                {selectedPlanoModal.conteudo?.calorias_meta && (
-                  <span>Meta Calórica: <strong>{selectedPlanoModal.conteudo.calorias_meta} kcal</strong></span>
-                )}
-              </div>
-
-              {selectedPlanoModal.conteudo?.refeicoes ? (
-                <div className="plano-meals-list">
-                  {selectedPlanoModal.conteudo.refeicoes.map((ref, i) => (
-                    <div key={i} className="plano-meal-box">
-                      <h5 className="meal-title">{ref.nome || `Refeição ${i + 1}`} ({ref.horario || '—'})</h5>
-                      <p className="meal-items">{ref.alimentos || ref.descricao}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <pre className="raw-plano-content">
-                  {typeof selectedPlanoModal.conteudo === 'string'
-                    ? selectedPlanoModal.conteudo
-                    : JSON.stringify(selectedPlanoModal.conteudo, null, 2)}
-                </pre>
-              )}
-            </div>
-
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setSelectedPlanoModal(null)}
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL: INFO GERAR PLANO ALIMENTAR (PROMPT 5 / PROMPT 6)                   */}
-      {/* ========================================================================= */}
-      {showGerarPlanoModal && (
-        <div className="modal-overlay fade-in" onClick={() => setShowGerarPlanoModal(false)}>
-          <div className="modal-card modal-gerar-info" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title-row">
-                <Sparkles size={20} color="#10b981" />
-                <h3>Geração de Plano Alimentar Inteligente</h3>
-              </div>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setShowGerarPlanoModal(false)}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <div className="info-badge-box">
-                <Info size={24} color="#10b981" />
-                <div>
-                  <h4>Módulo de Geração Inteligente</h4>
-                  <p>
-                    O botão de <strong>Gerar Plano Alimentar</strong> está conectado e ativo para este paciente. No próximo módulo (Prompt 6), o assistente com IA criará planos alimentares personalizados calculando automaticamente macronutrientes, calorias e substituições com base na anamnese de <strong>{formData.nome}</strong>.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => setShowGerarPlanoModal(false)}
-              >
-                Entendido
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
-}
-
-function CalendarCheckIcon(props) {
-  return <Calendar {...props} />;
 }
