@@ -51,6 +51,7 @@ import {
   connectWearable
 } from '../lib/neon';
 import MealPlanSection from './MealPlanSection';
+import SamsungHealthModal from './SamsungHealthModal';
 
 /* Utilitários de cálculo e formatação */
 function calculateAge(birthDateStr) {
@@ -468,6 +469,7 @@ export default function PatientProfile({
   const [wearableConn, setWearableConn] = useState(null);
   const [wearableMetrics, setWearableMetrics] = useState([]);
   const [loadingWearables, setLoadingWearables] = useState(false);
+  const [showSamsungModal, setShowSamsungModal] = useState(false);
 
   // Inicializar formData quando o paciente mudar
   useEffect(() => {
@@ -1549,9 +1551,19 @@ export default function PatientProfile({
                   </p>
                 </div>
 
-                <div className="wearable-status-tag-nutri">
-                  <Watch size={16} color="#0284c7" />
-                  <span>{wearableConn ? 'Samsung Health Conectado' : 'Aguardando Conexão do Paciente'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm"
+                    onClick={() => setShowSamsungModal(true)}
+                  >
+                    <Zap size={14} />
+                    <span>Ajustar / Sincronizar Relógio</span>
+                  </button>
+                  <div className="wearable-status-tag-nutri">
+                    <Watch size={16} color="#0284c7" />
+                    <span>{wearableConn ? 'Samsung Health Conectado' : 'Aguardando Conexão do Paciente'}</span>
+                  </div>
                 </div>
               </div>
 
@@ -1825,6 +1837,26 @@ export default function PatientProfile({
           </div>
         </div>
       )}
+
+      {/* Modal de Sincronização e Ajuste do Samsung Health */}
+      <SamsungHealthModal
+        isOpen={showSamsungModal}
+        onClose={() => setShowSamsungModal(false)}
+        paciente={patient}
+        wearableConn={wearableConn}
+        currentMetric={wearableMetrics[0]}
+        onSyncComplete={(newConn, newMetric) => {
+          if (newConn) setWearableConn(newConn);
+          if (newMetric) {
+            setWearableMetrics((prev) => [
+              newMetric,
+              ...prev.filter((m) => m.data_metrica !== newMetric.data_metrica)
+            ]);
+          } else if (newConn === null) {
+            setWearableConn(null);
+          }
+        }}
+      />
     </div>
   );
 }

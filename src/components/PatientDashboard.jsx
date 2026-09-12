@@ -45,6 +45,7 @@ import {
   disconnectWearable,
   importSamsungHealthData
 } from '../lib/neon';
+import SamsungHealthModal from './SamsungHealthModal';
 
 const DAYS_OF_WEEK = [
   'Segunda-feira',
@@ -121,49 +122,30 @@ export default function PatientDashboard({ user, onLogout }) {
     localStorage.setItem(`water_cups_${user?.id || user?.email}`, next.toString());
   };
 
-  const handleSyncSamsungHealth = async () => {
-    if (!paciente?.id) return;
-    setSyncingWearable(true);
-    setSyncSuccessMsg('');
+  const handleOpenSamsungModal = () => {
+    setShowWearableModal(true);
+  };
 
-    try {
-      const hoje = new Date().toISOString().split('T')[0];
-      const passosVal = Math.floor(8200 + Math.random() * 3500);
-      const kcalAtivas = Math.floor(410 + Math.random() * 280);
-      const sonoMin = Math.floor(420 + Math.random() * 60);
-      const bpmRep = Math.floor(62 + Math.random() * 6);
-
-      const metric = {
-        data_metrica: hoje,
-        passos: passosVal,
-        distancia_metros: Math.round(passosVal * 0.78),
-        calorias_ativas: kcalAtivas,
-        calorias_totais: kcalAtivas + 1720,
-        sono_minutos: sonoMin,
-        sono_profundo_minutos: Math.floor(sonoMin * 0.24),
-        frequencia_cardiaca_repouso: bpmRep,
-        frequencia_cardiaca_media: bpmRep + 16,
-        agua_ml: waterCups * 250,
-        percentual_gordura: paciente?.peso_inicial ? 21.2 : null,
-        massa_muscular_kg: paciente?.peso_inicial ? 33.6 : null
-      };
-
-      await connectWearable(paciente.id, { provedor: 'samsung_health' });
-      await saveWearableDailyMetric(paciente.id, metric);
-
-      setWearableConn({
-        provedor: 'samsung_health',
-        status_conexao: 'conectado',
-        ultima_sincronizacao: new Date().toISOString()
-      });
-      setWearableMetrics((prev) => [metric, ...prev.filter((m) => m.data_metrica !== hoje)]);
-      setSyncSuccessMsg('✨ Sincronização com Samsung Galaxy Watch concluída com sucesso!');
-      setTimeout(() => setSyncSuccessMsg(''), 4000);
-    } catch (err) {
-      console.error('Erro na sincronização wearable:', err);
-    } finally {
-      setSyncingWearable(false);
+  const handleSyncComplete = (newConn, newMetric) => {
+    if (newConn) {
+      setWearableConn(newConn);
     }
+    if (newMetric) {
+      setWearableMetrics((prev) => [
+        newMetric,
+        ...prev.filter((m) => m.data_metrica !== newMetric.data_metrica)
+      ]);
+      setSyncSuccessMsg('✨ Métricas reais do Samsung Health sincronizadas com sucesso!');
+      setTimeout(() => setSyncSuccessMsg(''), 4500);
+    } else if (newConn === null) {
+      setWearableConn(null);
+      setSyncSuccessMsg('Dispositivo Samsung desvinculado.');
+      setTimeout(() => setSyncSuccessMsg(''), 3000);
+    }
+  };
+
+  const handleSyncSamsungHealth = async () => {
+    setShowWearableModal(true);
   };
 
   const handleDisconnectWatch = async () => {
@@ -419,24 +401,33 @@ export default function PatientDashboard({ user, onLogout }) {
 
             <div className="wearable-header-actions">
               {wearableConn ? (
-                <button
-                  type="button"
-                  className="btn-wearable-sync"
-                  onClick={handleSyncSamsungHealth}
-                  disabled={syncingWearable}
-                >
-                  <RefreshCw size={15} className={syncingWearable ? 'spin-icon' : ''} />
-                  <span>{syncingWearable ? 'Sincronizando...' : 'Sincronizar Agora'}</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn-wearable-sync"
+                    onClick={handleOpenSamsungModal}
+                  >
+                    <Zap size={15} color="#0284c7" />
+                    <span>Ajustar / Sincronizar em Tempo Real</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={handleOpenSamsungModal}
+                    title="Configurações da Conta Samsung"
+                  >
+                    <Smartphone size={14} />
+                    <span>Conta Samsung</span>
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"
                   className="btn-wearable-connect"
-                  onClick={handleSyncSamsungHealth}
-                  disabled={syncingWearable}
+                  onClick={handleOpenSamsungModal}
                 >
-                  <Watch size={16} />
-                  <span>{syncingWearable ? 'Conectando...' : 'Conectar Samsung Health'}</span>
+                  <Smartphone size={16} />
+                  <span>Vincular Conta Samsung do Smartphone</span>
                 </button>
               )}
             </div>
@@ -1029,6 +1020,16 @@ export default function PatientDashboard({ user, onLogout }) {
           <span>Sair</span>
         </button>
       </nav>
+
+      {/* Modal de Sincronização e Vinculação da Conta Samsung */}
+      <SamsungHealthModal
+        isOpen={showWearableModal}
+        onClose={() => setShowWearableModal(false)}
+        paciente={paciente}
+        wearableConn={wearableConn}
+        currentMetric={todayMetric}
+        onSyncComplete={handleSyncComplete}
+      />
     </div>
   );
 }

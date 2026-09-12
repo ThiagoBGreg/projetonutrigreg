@@ -7306,3 +7306,379 @@ textarea {
     font-size: 1.2rem;
   }
 }
+
+/* ========================================================================= */
+/* SAMSUNG HEALTH MODAL & LIVE TELEMETRY EDITING STYLING                     */
+/* ========================================================================= */
+
+.modal-samsung-sync {
+  max-width: 680px;
+  width: 100%;
+}
+
+.samsung-brand-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px 4px 12px 4px;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+}
+
+.samsung-modal-tabs {
+  display: flex;
+  background: #f1f5f9;
+  padding: 4px;
+  margin: 16px 20px 0 20px;
+  border-radius: 14px 4px 14px 4px;
+  gap: 4px;
+}
+
+.samsung-modal-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border-radius: 10px 3px 10px 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.samsung-modal-tab-btn:hover {
+  color: #0f172a;
+}
+
+.samsung-modal-tab-btn.active {
+  background: #ffffff;
+  color: #0284c7;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.samsung-modal-body {
+  padding: 20px 24px 28px 24px;
+}
+
+/* Real-Time Telemetry Form */
+.samsung-realtime-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.realtime-header-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.realtime-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #059669;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.realtime-hint {
+  font-size: 0.88rem;
+  color: #475569;
+  margin: 0;
+}
+
+.realtime-metrics-grid-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.metric-input-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px 4px 16px 4px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.metric-input-card:focus-within {
+  border-color: #0284c7;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.1);
+}
+
+.metric-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.metric-card-title label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.metric-field-wrapper {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.metric-big-input {
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #0f172a;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid #cbd5e1;
+  width: 100%;
+  padding: 4px 0;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.metric-big-input:focus {
+  border-bottom-color: #0284c7;
+}
+
+.metric-unit {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.sleep-split-inputs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sleep-input-col {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.metric-small-input {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid #cbd5e1;
+  width: 60px;
+  padding: 2px 0;
+  outline: none;
+  text-align: center;
+}
+
+.metric-small-input:focus {
+  border-bottom-color: #0284c7;
+}
+
+.sleep-input-col span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.samsung-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.btn-save-samsung-metrics {
+  width: 100%;
+  justify-content: center;
+  padding: 13px 20px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  box-shadow: 0 6px 18px rgba(2, 132, 199, 0.3);
+}
+
+.btn-save-samsung-metrics:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(2, 132, 199, 0.4);
+}
+
+/* Samsung Account Panel */
+.samsung-account-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.samsung-sso-hero {
+  text-align: center;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 18px 4px 18px 4px;
+  border: 1px solid #bae6fd;
+}
+
+.sso-icon-box {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px 4px 16px 4px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px auto;
+  box-shadow: 0 6px 14px rgba(2, 132, 199, 0.15);
+}
+
+.samsung-sso-hero h4 {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+}
+
+.samsung-sso-hero p {
+  font-size: 0.85rem;
+  color: #475569;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.samsung-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.samsung-connected-status-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px 4px 14px 4px;
+  padding: 14px 16px;
+}
+
+.status-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.status-row strong {
+  display: block;
+  font-size: 0.86rem;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.status-row p {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.35;
+}
+
+/* Samsung Import Panel */
+.samsung-import-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.import-box-dropzone {
+  border: 2px dashed #bae6fd;
+  background: #f0f9ff;
+  border-radius: 20px 6px 20px 6px;
+  padding: 28px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.import-box-dropzone h4 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+}
+
+.import-box-dropzone p {
+  font-size: 0.85rem;
+  color: #475569;
+  max-width: 440px;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.btn-choose-file {
+  margin-top: 6px;
+  cursor: pointer;
+  padding: 10px 20px;
+}
+
+.import-instructions-list {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px 4px 14px 4px;
+  padding: 16px 20px;
+}
+
+.import-instructions-list h5 {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 10px 0;
+}
+
+.import-instructions-list ol {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.import-instructions-list li {
+  font-size: 0.82rem;
+  color: #475569;
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+@media (max-width: 640px) {
+  .realtime-metrics-grid-inputs {
+    grid-template-columns: 1fr;
+  }
+  .samsung-modal-tabs {
+    flex-direction: column;
+    margin: 12px 14px 0 14px;
+  }
+  .samsung-modal-body {
+    padding: 16px;
+  }
+}
+
