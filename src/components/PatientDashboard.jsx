@@ -968,6 +968,67 @@ export default function PatientDashboard({ user, onLogout }) {
           </div>
         )}
       </main>
+
+      {/* Barra de Navegação Inferior Fixa para Mobile PWA */}
+      <nav className="patient-mobile-bottom-nav">
+        <button
+          type="button"
+          className={`mobile-nav-tab-btn ${activeTab === 'plano' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('plano');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        >
+          <Utensils size={20} />
+          <span>Plano</span>
+        </button>
+
+        <button
+          type="button"
+          className={`mobile-nav-tab-btn ${activeTab === 'metas' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('metas');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        >
+          <Target size={20} />
+          <span>Metas</span>
+        </button>
+
+        <button
+          type="button"
+          className={`mobile-nav-tab-btn ${activeTab === 'anamnese' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('anamnese');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        >
+          <Info size={20} />
+          <span>Orientações</span>
+        </button>
+
+        <button
+          type="button"
+          className={`mobile-nav-tab-btn ${activeTab === 'wearables' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('wearables');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        >
+          <Watch size={20} />
+          <span>Galaxy Watch</span>
+        </button>
+
+        <button
+          type="button"
+          className="mobile-nav-tab-btn mobile-nav-logout"
+          onClick={handleLogout}
+          title="Sair do Portal"
+        >
+          <LogOut size={20} />
+          <span>Sair</span>
+        </button>
+      </nav>
     </div>
   );
 }
