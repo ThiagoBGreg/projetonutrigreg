@@ -30,14 +30,25 @@ import {
   KeyRound,
   Copy,
   Send,
-  RefreshCw
+  RefreshCw,
+  Watch,
+  Footprints,
+  Flame,
+  Moon,
+  Heart,
+  Zap,
+  Smartphone
 } from 'lucide-react';
 import {
   updatePaciente,
   getConsultas,
   createConsulta,
   deleteConsulta,
-  getPlanosAlimentares
+  getPlanosAlimentares,
+  getWearableConnection,
+  getWearableDailyMetrics,
+  saveWearableDailyMetric,
+  connectWearable
 } from '../lib/neon';
 import MealPlanSection from './MealPlanSection';
 
@@ -452,6 +463,12 @@ export default function PatientProfile({
   const [selectedPlanoModal, setSelectedPlanoModal] = useState(null);
   const [showGerarPlanoModal, setShowGerarPlanoModal] = useState(false);
 
+  // Estados de Wearables & Telemetria Galaxy Watch (Prompt 8)
+  const [consultasSubtab, setConsultasSubtab] = useState('consultas'); // 'consultas' | 'wearables'
+  const [wearableConn, setWearableConn] = useState(null);
+  const [wearableMetrics, setWearableMetrics] = useState([]);
+  const [loadingWearables, setLoadingWearables] = useState(false);
+
   // Inicializar formData quando o paciente mudar
   useEffect(() => {
     if (patient) {
@@ -508,7 +525,7 @@ export default function PatientProfile({
     }
   }, [patient]);
 
-  // Carregar Consultas e Planos do Neon em tempo real
+  // Carregar Consultas, Planos e Wearables do Neon em tempo real
   useEffect(() => {
     async function loadNeonData() {
       if (!patient?.id) return;
@@ -531,6 +548,20 @@ export default function PatientProfile({
         console.warn('Aviso ao carregar planos alimentares do Neon:', err);
       } finally {
         setLoadingPlanos(false);
+      }
+
+      try {
+        setLoadingWearables(true);
+        const [conn, metrics] = await Promise.all([
+          getWearableConnection(patient.id),
+          getWearableDailyMetrics(patient.id, 14)
+        ]);
+        setWearableConn(conn);
+        setWearableMetrics(metrics || []);
+      } catch (err) {
+        console.warn('Aviso ao carregar dados de wearables:', err);
+      } finally {
+        setLoadingWearables(false);
       }
     }
 
@@ -1359,124 +1390,276 @@ export default function PatientProfile({
       )}
 
       {/* ========================================================================= */}
-      {/* SEÇÃO 2: CONSULTAS & EVOLUÇÃO (PROMPT 5)                                   */}
+      {/* SEÇÃO 2: CONSULTAS & EVOLUÇÃO & WEARABLES (PROMPT 5 & 8)                  */}
       {/* ========================================================================= */}
       {activeSection === 'consultas' && (
         <div className="profile-section-card fade-in">
-          {/* Header da Seção de Consultas */}
-          <div className="consultas-section-header">
-            <div>
-              <h3 className="section-title">Acompanhamento Clínico & Consultas</h3>
-              <p className="section-subtitle">
-                Registre cada atendimento e visualize a evolução corporal do paciente.
-              </p>
-            </div>
+          {/* Sub-navegação interna: Consultas vs Telemetria Wearable */}
+          <div className="form-subtabs-nav">
+            <button
+              type="button"
+              className={`subtab-btn ${consultasSubtab === 'consultas' ? 'active' : ''}`}
+              onClick={() => setConsultasSubtab('consultas')}
+            >
+              <CalendarCheck size={16} />
+              <span>Consultas & Evolução</span>
+              {consultas.length > 0 && <span className="tab-count-badge">{consultas.length}</span>}
+            </button>
 
             <button
               type="button"
-              className="btn-primary"
-              onClick={() => setShowNovaConsultaModal(true)}
+              className={`subtab-btn ${consultasSubtab === 'wearables' ? 'active' : ''}`}
+              onClick={() => setConsultasSubtab('wearables')}
             >
-              <CalendarPlus size={18} />
-              <span>Nova Consulta</span>
+              <Watch size={16} />
+              <span>Galaxy Watch & Telemetria Real</span>
+              {wearableMetrics.length > 0 && (
+                <span className="tab-count-badge" style={{ backgroundColor: '#0284c7' }}>
+                  {wearableMetrics.length}
+                </span>
+              )}
             </button>
           </div>
 
-          {/* Gráfico de Evolução de Peso */}
-          <div className="chart-outer-container">
-            <WeightEvolutionChart
-              consultas={consultas}
-              initialWeight={formData.peso}
-            />
-          </div>
+          {consultasSubtab === 'consultas' ? (
+            <>
+              {/* Header da Seção de Consultas */}
+              <div className="consultas-section-header">
+                <div>
+                  <h3 className="section-title">Acompanhamento Clínico & Consultas</h3>
+                  <p className="section-subtitle">
+                    Registre cada atendimento e visualize a evolução corporal do paciente.
+                  </p>
+                </div>
 
-          {/* Histórico / Lista de Consultas */}
-          <div className="consultas-list-container mt-4">
-            <h4 className="list-title">Histórico de Atendimentos</h4>
-
-            {loadingConsultas ? (
-              <div className="loading-state-box">
-                <div className="spinner"></div>
-                <p>Carregando histórico de consultas do Neon...</p>
-              </div>
-            ) : consultas.length === 0 ? (
-              <div className="empty-consultas-card">
-                <Calendar size={36} color="#94a3b8" />
-                <p>Nenhuma consulta registrada para este paciente ainda.</p>
                 <button
                   type="button"
-                  className="btn-primary btn-sm mt-2"
+                  className="btn-primary"
                   onClick={() => setShowNovaConsultaModal(true)}
                 >
-                  <Plus size={16} />
-                  <span>Registrar Primeira Consulta</span>
+                  <CalendarPlus size={18} />
+                  <span>Nova Consulta</span>
                 </button>
               </div>
-            ) : (
-              <div className="consultas-grid">
-                {consultas.map((c) => (
-                  <div key={c.id} className="consulta-card fade-in">
-                    <div className="consulta-card-header">
-                      <div className="consulta-date-badge">
-                        <Calendar size={16} color="#10b981" />
-                        <span>{formatDate(c.data_consulta)}</span>
-                      </div>
 
-                      <button
-                        type="button"
-                        className="btn-delete-consulta"
-                        onClick={() => handleDeleteConsulta(c.id)}
-                        title="Excluir esta consulta"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-
-                    <div className="consulta-metrics-grid">
-                      <div className="consulta-metric-item">
-                        <span className="c-label">Peso</span>
-                        <span className="c-val highlight">{c.peso} kg</span>
-                      </div>
-
-                      {c.cintura && (
-                        <div className="consulta-metric-item">
-                          <span className="c-label">Cintura</span>
-                          <span className="c-val">{c.cintura} cm</span>
-                        </div>
-                      )}
-
-                      {c.quadril && (
-                        <div className="consulta-metric-item">
-                          <span className="c-label">Quadril</span>
-                          <span className="c-val">{c.quadril} cm</span>
-                        </div>
-                      )}
-
-                      {c.percentual_gordura && (
-                        <div className="consulta-metric-item">
-                          <span className="c-label">% Gordura</span>
-                          <span className="c-val">{c.percentual_gordura}%</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {c.proximo_retorno && (
-                      <div className="consulta-retorno-tag">
-                        <Clock size={14} color="#0284c7" />
-                        <span>Próximo Retorno: <strong>{formatDate(c.proximo_retorno)}</strong></span>
-                      </div>
-                    )}
-
-                    {c.observacoes && (
-                      <div className="consulta-obs-box">
-                        <p>{c.observacoes}</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
+              {/* Gráfico de Evolução de Peso */}
+              <div className="chart-outer-container">
+                <WeightEvolutionChart
+                  consultas={consultas}
+                  initialWeight={formData.peso}
+                />
               </div>
-            )}
-          </div>
+
+              {/* Histórico / Lista de Consultas */}
+              <div className="consultas-list-container mt-4">
+                <h4 className="list-title">Histórico de Atendimentos</h4>
+
+                {loadingConsultas ? (
+                  <div className="loading-state-box">
+                    <div className="spinner"></div>
+                    <p>Carregando histórico de consultas do Neon...</p>
+                  </div>
+                ) : consultas.length === 0 ? (
+                  <div className="empty-consultas-card">
+                    <Calendar size={36} color="#94a3b8" />
+                    <p>Nenhuma consulta registrada para este paciente ainda.</p>
+                    <button
+                      type="button"
+                      className="btn-primary btn-sm mt-2"
+                      onClick={() => setShowNovaConsultaModal(true)}
+                    >
+                      <Plus size={16} />
+                      <span>Registrar Primeira Consulta</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="consultas-grid">
+                    {consultas.map((c) => (
+                      <div key={c.id} className="consulta-card fade-in">
+                        <div className="consulta-card-header">
+                          <div className="consulta-date-badge">
+                            <Calendar size={16} color="#10b981" />
+                            <span>{formatDate(c.data_consulta)}</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="btn-delete-consulta"
+                            onClick={() => handleDeleteConsulta(c.id)}
+                            title="Excluir esta consulta"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+
+                        <div className="consulta-metrics-grid">
+                          <div className="consulta-metric-item">
+                            <span className="c-label">Peso</span>
+                            <span className="c-val highlight">{c.peso} kg</span>
+                          </div>
+
+                          {c.cintura && (
+                            <div className="consulta-metric-item">
+                              <span className="c-label">Cintura</span>
+                              <span className="c-val">{c.cintura} cm</span>
+                            </div>
+                          )}
+
+                          {c.quadril && (
+                            <div className="consulta-metric-item">
+                              <span className="c-label">Quadril</span>
+                              <span className="c-val">{c.quadril} cm</span>
+                            </div>
+                          )}
+
+                          {c.percentual_gordura && (
+                            <div className="consulta-metric-item">
+                              <span className="c-label">% Gordura</span>
+                              <span className="c-val">{c.percentual_gordura}%</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {c.proximo_retorno && (
+                          <div className="consulta-retorno-tag">
+                            <Clock size={14} color="#0284c7" />
+                            <span>Próximo Retorno: <strong>{formatDate(c.proximo_retorno)}</strong></span>
+                          </div>
+                        )}
+
+                        {c.observacoes && (
+                          <div className="consulta-obs-box">
+                            <p>{c.observacoes}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            /* Subaba: Wearables & Telemetria Galaxy Watch */
+            <div className="wearables-nutri-view fade-in">
+              <div className="consultas-section-header">
+                <div>
+                  <h3 className="section-title">Telemetria Real do Galaxy Watch / Samsung Health</h3>
+                  <p className="section-subtitle">
+                    Comparativo entre a rotina relatada na anamnese e os dados biológicos reais medidos pelo smartwatch.
+                  </p>
+                </div>
+
+                <div className="wearable-status-tag-nutri">
+                  <Watch size={16} color="#0284c7" />
+                  <span>{wearableConn ? 'Samsung Health Conectado' : 'Aguardando Conexão do Paciente'}</span>
+                </div>
+              </div>
+
+              {/* Quadro Comparativo Anamnese vs Realidade */}
+              <div className="wearable-comparison-grid">
+                <div className="comparison-card anamnese-card">
+                  <div className="comparison-header">
+                    <User size={18} color="#64748b" />
+                    <h4>Rotina Declarada na Anamnese</h4>
+                  </div>
+                  <ul className="comparison-list">
+                    <li>
+                      <span className="comp-label">Horário de Dormir:</span>
+                      <strong>{formData.horario_dorme || '22:30'}</strong>
+                    </li>
+                    <li>
+                      <span className="comp-label">Horário de Acordar:</span>
+                      <strong>{formData.horario_acorda || '06:00'}</strong>
+                    </li>
+                    <li>
+                      <span className="comp-label">Atividade Física:</span>
+                      <strong>{formData.pratica_exercicio === 'sim' ? (formData.exercicio_detalhes || 'Sim') : 'Não pratica'}</strong>
+                    </li>
+                    <li>
+                      <span className="comp-label">Meta de Hidratação:</span>
+                      <strong>{formData.agua_litros || '2.5'} Litros/dia</strong>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="comparison-card wearable-card">
+                  <div className="comparison-header">
+                    <Watch size={18} color="#0284c7" />
+                    <h4>Telemetria Real do Galaxy Watch</h4>
+                  </div>
+                  {wearableMetrics.length > 0 ? (
+                    <ul className="comparison-list">
+                      <li>
+                        <span className="comp-label">Média Real de Sono:</span>
+                        <strong className="highlight-blue">
+                          {Math.floor(wearableMetrics.reduce((acc, m) => acc + (m.sono_minutos || 0), 0) / (wearableMetrics.length * 60))}h{' '}
+                          {Math.round((wearableMetrics.reduce((acc, m) => acc + (m.sono_minutos || 0), 0) / wearableMetrics.length) % 60)}min / noite
+                        </strong>
+                      </li>
+                      <li>
+                        <span className="comp-label">Média de Passos/Dia:</span>
+                        <strong className="highlight-green">
+                          {Math.round(wearableMetrics.reduce((acc, m) => acc + (m.passos || 0), 0) / wearableMetrics.length).toLocaleString('pt-BR')} passos
+                        </strong>
+                      </li>
+                      <li>
+                        <span className="comp-label">Gasto Ativo Médio:</span>
+                        <strong className="highlight-orange">
+                          {Math.round(wearableMetrics.reduce((acc, m) => acc + (m.calorias_ativas || 0), 0) / wearableMetrics.length)} kcal/dia
+                        </strong>
+                      </li>
+                      <li>
+                        <span className="comp-label">Frequência Cardíaca Repouso:</span>
+                        <strong>{wearableMetrics[0]?.frequencia_cardiaca_repouso || 64} bpm</strong>
+                      </li>
+                    </ul>
+                  ) : (
+                    <div className="empty-telemetry-notice">
+                      <p>Ainda não há dados suficientes sincronizados do relógio para traçar a média semanal.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Tabela de Métricas do Wearable */}
+              <div className="consultas-list-container mt-4">
+                <h4 className="list-title">Histórico Diário de Métricas Vestíveis</h4>
+                {wearableMetrics.length === 0 ? (
+                  <div className="empty-consultas-card">
+                    <Watch size={36} color="#94a3b8" />
+                    <p>Nenhuma telemetria recebida do relógio ainda.</p>
+                  </div>
+                ) : (
+                  <div className="wearable-metrics-table-wrapper">
+                    <table className="wearable-table">
+                      <thead>
+                        <tr>
+                          <th>Data</th>
+                          <th>Passos</th>
+                          <th>Distância</th>
+                          <th>Kcal Ativas</th>
+                          <th>Sono Total</th>
+                          <th>BPM Repouso</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {wearableMetrics.map((m, i) => (
+                          <tr key={i}>
+                            <td><strong>{formatDate(m.data_metrica)}</strong></td>
+                            <td>{(m.passos || 0).toLocaleString('pt-BR')}</td>
+                            <td>{((m.distancia_metros || 0) / 1000).toFixed(2)} km</td>
+                            <td><span className="kcal-tag">{m.calorias_ativas || 0} kcal</span></td>
+                            <td>{Math.floor((m.sono_minutos || 0) / 60)}h {(m.sono_minutos || 0) % 60}min</td>
+                            <td>{m.frequencia_cardiaca_repouso || '—'} bpm</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

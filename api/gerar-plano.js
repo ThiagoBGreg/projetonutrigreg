@@ -3,7 +3,7 @@ import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 /**
  * Gerador clínico inteligente de contingência para culinária e rotina brasileira
  */
-function generateClinicalBrazilianPlan(paciente) {
+function generateClinicalBrazilianPlan(paciente, wearable) {
   const restricoes = (paciente?.restricoes || '').toLowerCase();
   const alergias = (paciente?.alergias || '').toLowerCase();
   const patologias = (paciente?.patologias || '').toLowerCase();
@@ -12,7 +12,8 @@ function generateClinicalBrazilianPlan(paciente) {
   const semLactose = restricoes.includes('lactose') || alergias.includes('leite') || restricoes.includes('leite');
   const semGluten = restricoes.includes('glúten') || restricoes.includes('gluten') || patologias.includes('celíaca') || alergias.includes('trigo');
   const lowSugar = patologias.includes('diabetes') || restricoes.includes('açúcar') || restricoes.includes('acucar');
-  const hipertrofia = objetivo.includes('massa') || objetivo.includes('hipertrofia') || objetivo.includes('performance');
+  const gastoAtivoAlto = wearable?.calorias_ativas_media > 450 || wearable?.passos_media > 9000;
+  const hipertrofia = objetivo.includes('massa') || objetivo.includes('hipertrofia') || objetivo.includes('performance') || gastoAtivoAlto;
 
   const dias = [
     'Segunda-feira',
@@ -280,7 +281,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Método não permitido. Utilize POST.' });
   }
 
-  const { paciente } = req.body || {};
+  const { paciente, wearable_telemetry } = req.body || {};
   if (!paciente) {
     return res.status(400).json({ error: 'Dados do paciente são obrigatórios.' });
   }
@@ -289,11 +290,22 @@ export default async function handler(req, res) {
 
   // Se a chave não estiver configurada no ambiente, executa a geração clínica inteligente diretamente com sucesso
   if (!apiKey || apiKey.trim() === '' || apiKey === 'sua_chave_aqui') {
-    const fallbackPlan = generateClinicalBrazilianPlan(paciente);
+    const fallbackPlan = generateClinicalBrazilianPlan(paciente, wearable_telemetry);
     return res.status(200).json(fallbackPlan);
   }
 
   try {
+    const wearableFormatted = wearable_telemetry ? `
+- [Telemetria Real Galaxy Watch / Smartwatch]:
+  * Passos Médios Diários: ${wearable_telemetry.passos_media || 'N/A'} passos/dia
+  * Gasto Calórico Ativo: ${wearable_telemetry.calorias_ativas_media || 'N/A'} kcal/dia
+  * Horas de Sono Médias: ${wearable_telemetry.sono_horas_media ? `${wearable_telemetry.sono_horas_media}h` : 'N/A'} (Score de Sono: ${wearable_telemetry.sono_score_medio || 'N/A'}/100)
+  * Frequência Cardíaca de Repouso: ${wearable_telemetry.bpm_repouso_medio ? `${wearable_telemetry.bpm_repouso_medio} bpm` : 'N/A'}
+  * Hidratação Média Registrada: ${wearable_telemetry.hidratacao_media_ml ? `${wearable_telemetry.hidratacao_media_ml} ml/dia` : 'N/A'}
+  * Porcentagem de Gordura (Bioimpedância): ${wearable_telemetry.percentual_gordura ? `${wearable_telemetry.percentual_gordura}%` : 'N/A'}
+  * Massa Muscular Esquelética: ${wearable_telemetry.massa_muscular_kg ? `${wearable_telemetry.massa_muscular_kg} kg` : 'N/A'}
+` : '';
+
     // Formatar os dados do paciente para o prompt do Gemini
     const dadosPacienteFormatados = `
 - Nome: ${paciente.nome || 'Não informado'}
@@ -306,6 +318,7 @@ export default async function handler(req, res) {
 ${paciente.objetivo_outro ? `- Detalhes dos Objetivos: ${paciente.objetivo_outro}` : ''}
 - Nível de Atividade Física: ${paciente.nivel_atividade || 'Moderadamente ativo'}
 ${paciente.exercicio_detalhes ? `- Atividade Praticada: ${paciente.exercicio_detalhes}` : ''}
+${wearableFormatted}
 - Alergias Alimentares: ${paciente.alergias || paciente.alergias_selecionadas?.join(', ') || 'Nenhuma informada'}
 - Restrições Alimentares / Intolerâncias: ${paciente.restricoes || paciente.restricoes_selecionadas?.join(', ') || 'Nenhuma informada'}
 - Patologias / Condições Clínicas: ${paciente.patologias || paciente.patologias_selecionadas?.join(', ') || 'Nenhuma informada'}
@@ -386,13 +399,14 @@ ${paciente.exercicio_detalhes ? `- Atividade Praticada: ${paciente.exercicio_det
 Você é um nutricionista clínico profissional especialista na culinária e rotina brasileira.
 Gere um plano alimentar semanal completo, saudável e diversificado com base nos dados do paciente fornecidos abaixo.
 
-Dados do Paciente (Metas, Alergias, Restrições e Histórico):
+Dados do Paciente (Metas, Alergias, Restrições, Histórico e Telemetria Smartwatch Real):
 ${dadosPacienteFormatados}
 
 # Regras Críticas de Execução:
 - Você deve responder APENAS e estritamente o objeto JSON solicitado.
 - Não inclua blocos de código markdown (como \`\`\`json ... \`\`\`), explicações, introduções ou textos complementares.
 - Adapte o cardápio rigorosamente a quaisquer alergias ou restrições descritas nos dados.
+- Caso haja dados de Smartwatch (Samsung Health / Galaxy Watch), calibre o aporte energético e de proteínas conforme o gasto calórico ativo real e sono medidos.
 - Utilize alimentos comuns, acessíveis e culturalmente aceitos no Brasil.
 - Evite repetições monótonas de alimentos nos dias seguidos.
 `.trim();
@@ -411,7 +425,7 @@ ${dadosPacienteFormatados}
     return res.status(200).json(parsedResult);
   } catch (error) {
     console.warn('Aviso na API Gemini, ativando plano clínico inteligente:', error.message);
-    const fallbackPlan = generateClinicalBrazilianPlan(paciente);
+    const fallbackPlan = generateClinicalBrazilianPlan(paciente, wearable_telemetry);
     return res.status(200).json(fallbackPlan);
   }
 }

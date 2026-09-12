@@ -788,14 +788,18 @@ export async function getPatientPortalData(pacienteIdOrKey) {
         const paciente = mapDbPatientToModel(patientRow);
         paciente.nutricionista_nome = patientRow.nutricionista_nome || 'Dra. Ana Maria (Nutricionista)';
 
-        // Buscar plano alimentar mais recente
+        // Buscar plano alimentar mais recente, consultas e dados de wearable
         const planos = await getPlanosAlimentares(patientRow.id);
         const consultas = await getConsultas(patientRow.id);
+        const wearableConn = await getWearableConnection(patientRow.id);
+        const metrics = await getWearableDailyMetrics(patientRow.id, 7);
 
         return {
           paciente,
           planoAlimentar: planos.length > 0 ? planos[0] : null,
-          consultas: consultas || []
+          consultas: consultas || [],
+          wearableConnection: wearableConn,
+          wearableMetrics: metrics || []
         };
       }
     }
@@ -1103,6 +1107,270 @@ export async function getNutricionistasList() {
     { id: '1', nome: 'Dra. Ana Maria (Nutrição Clínica)' },
     { id: '2', nome: 'Dr. Gregory House (Nutrição Esportiva)' }
   ];
+}
+
+/**
+ * =========================================================================
+ * PROMPT 8: WEARABLES & SAMSUNG HEALTH (GALAXY WATCH) INTEGRATION
+ * =========================================================================
+ */
+
+/**
+ * Get wearable connection status for a patient
+ */
+export async function getWearableConnection(pacienteId) {
+  if (!pacienteId) return null;
+
+  try {
+    if (sql && isUuid(pacienteId)) {
+      const rows = await sql`
+        SELECT * FROM public.paciente_wearables
+        WHERE paciente_id = ${pacienteId}
+        ORDER BY created_at DESC
+        LIMIT 1;
+      `;
+      if (rows && rows.length > 0) return rows[0];
+    }
+  } catch (err) {
+    console.warn('Erro ao buscar conexao wearable no Neon:', err);
+  }
+
+  // Fallback local storage
+  try {
+    const raw = safeStorage.getItem(`wearable_conn_${pacienteId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Connect or update wearable connection for a patient
+ */
+export async function connectWearable(pacienteId, dadosConexao = {}) {
+  if (!pacienteId) throw new Error('ID do paciente é obrigatório.');
+
+  const connData = {
+    provedor: dadosConexao.provedor || 'samsung_health',
+    usuario_provedor_id: dadosConexao.usuario_provedor_id || 'samsung_user_' + Date.now(),
+    status_conexao: 'conectado',
+    ultima_sincronizacao: new Date().toISOString()
+  };
+
+  try {
+    if (sql && isUuid(pacienteId)) {
+      // Upsert connection
+      const rows = await sql`
+        INSERT INTO public.paciente_wearables (
+          paciente_id,
+          provedor,
+          usuario_provedor_id,
+          status_conexao,
+          ultima_sincronizacao
+        ) VALUES (
+          ${pacienteId},
+          ${connData.provedor},
+          ${connData.usuario_provedor_id},
+          ${connData.status_conexao},
+          NOW()
+        )
+        RETURNING *;
+      `;
+      if (rows && rows.length > 0) {
+        safeStorage.setItem(`wearable_conn_${pacienteId}`, JSON.stringify(rows[0]));
+        return rows[0];
+      }
+    }
+  } catch (err) {
+    console.warn('Falha ao salvar conexao wearable no Neon DB:', err);
+  }
+
+  // Fallback local storage
+  const fallback = {
+    id: 'wearable-' + Date.now(),
+    paciente_id: pacienteId,
+    ...connData
+  };
+  safeStorage.setItem(`wearable_conn_${pacienteId}`, JSON.stringify(fallback));
+  return fallback;
+}
+
+/**
+ * Disconnect wearable for a patient
+ */
+export async function disconnectWearable(pacienteId) {
+  if (!pacienteId) return;
+
+  try {
+    if (sql && isUuid(pacienteId)) {
+      await sql`DELETE FROM public.paciente_wearables WHERE paciente_id = ${pacienteId}`;
+    }
+  } catch (err) {
+    console.warn('Erro ao desconectar wearable no Neon DB:', err);
+  }
+
+  safeStorage.removeItem(`wearable_conn_${pacienteId}`);
+}
+
+/**
+ * Get wearable metrics history for a patient
+ */
+export async function getWearableDailyMetrics(pacienteId, diasLimite = 7) {
+  if (!pacienteId) return [];
+
+  try {
+    if (sql && isUuid(pacienteId)) {
+      const rows = await sql`
+        SELECT * FROM public.wearable_metricas_diarias
+        WHERE paciente_id = ${pacienteId}
+        ORDER BY data_metrica DESC
+        LIMIT ${diasLimite};
+      `;
+      if (rows && rows.length > 0) return rows;
+    }
+  } catch (err) {
+    console.warn('Erro ao buscar metricas de wearable no Neon:', err);
+  }
+
+  // Fallback local storage
+  try {
+    const raw = safeStorage.getItem(`wearable_metrics_${pacienteId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.slice(0, diasLimite) : [];
+    }
+  } catch (e) {}
+
+  return [];
+}
+
+/**
+ * Save daily wearable metric for a patient
+ */
+export async function saveWearableDailyMetric(pacienteId, metricas = {}) {
+  if (!pacienteId) throw new Error('ID do paciente é obrigatório.');
+
+  const dataMetrica = metricas.data_metrica || new Date().toISOString().split('T')[0];
+  const payload = {
+    paciente_id: pacienteId,
+    data_metrica: dataMetrica,
+    passos: Number(metricas.passos || 0),
+    distancia_metros: Number(metricas.distancia_metros || 0),
+    calorias_ativas: Number(metricas.calorias_ativas || 0),
+    calorias_totais: Number(metricas.calorias_totais || 0),
+    sono_minutos: Number(metricas.sono_minutos || 0),
+    sono_profundo_minutos: Number(metricas.sono_profundo_minutos || 0),
+    frequencia_cardiaca_repouso: metricas.frequencia_cardiaca_repouso ? Number(metricas.frequencia_cardiaca_repouso) : null,
+    frequencia_cardiaca_media: metricas.frequencia_cardiaca_media ? Number(metricas.frequencia_cardiaca_media) : null,
+    agua_ml: Number(metricas.agua_ml || 0),
+    percentual_gordura: metricas.percentual_gordura ? Number(metricas.percentual_gordura) : null,
+    massa_muscular_kg: metricas.massa_muscular_kg ? Number(metricas.massa_muscular_kg) : null,
+    dados_brutos: metricas.dados_brutos ? JSON.stringify(metricas.dados_brutos) : null
+  };
+
+  try {
+    if (sql && isUuid(pacienteId)) {
+      const rows = await sql`
+        INSERT INTO public.wearable_metricas_diarias (
+          paciente_id,
+          data_metrica,
+          passos,
+          distancia_metros,
+          calorias_ativas,
+          calorias_totais,
+          sono_minutos,
+          sono_profundo_minutos,
+          frequencia_cardiaca_repouso,
+          frequencia_cardiaca_media,
+          agua_ml,
+          percentual_gordura,
+          massa_muscular_kg,
+          dados_brutos
+        ) VALUES (
+          ${payload.paciente_id},
+          ${payload.data_metrica},
+          ${payload.passos},
+          ${payload.distancia_metros},
+          ${payload.calorias_ativas},
+          ${payload.calorias_totais},
+          ${payload.sono_minutos},
+          ${payload.sono_profundo_minutos},
+          ${payload.frequencia_cardiaca_repouso},
+          ${payload.frequencia_cardiaca_media},
+          ${payload.agua_ml},
+          ${payload.percentual_gordura},
+          ${payload.massa_muscular_kg},
+          ${payload.dados_brutos ? payload.dados_brutos : null}::jsonb
+        )
+        ON CONFLICT (paciente_id, data_metrica)
+        DO UPDATE SET
+          passos = EXCLUDED.passos,
+          distancia_metros = EXCLUDED.distancia_metros,
+          calorias_ativas = EXCLUDED.calorias_ativas,
+          calorias_totais = EXCLUDED.calorias_totais,
+          sono_minutos = EXCLUDED.sono_minutos,
+          sono_profundo_minutos = EXCLUDED.sono_profundo_minutos,
+          frequencia_cardiaca_repouso = EXCLUDED.frequencia_cardiaca_repouso,
+          frequencia_cardiaca_media = EXCLUDED.frequencia_cardiaca_media,
+          agua_ml = EXCLUDED.agua_ml,
+          percentual_gordura = EXCLUDED.percentual_gordura,
+          massa_muscular_kg = EXCLUDED.massa_muscular_kg,
+          dados_brutos = EXCLUDED.dados_brutos,
+          created_at = NOW()
+        RETURNING *;
+      `;
+      if (rows && rows.length > 0) {
+        return rows[0];
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao salvar métrica de wearable no Neon DB:', err);
+  }
+
+  // Fallback cache
+  try {
+    const existing = JSON.parse(safeStorage.getItem(`wearable_metrics_${pacienteId}`) || '[]');
+    const updated = [payload, ...existing.filter(m => m.data_metrica !== dataMetrica)];
+    safeStorage.setItem(`wearable_metrics_${pacienteId}`, JSON.stringify(updated));
+  } catch (e) {}
+
+  return payload;
+}
+
+/**
+ * Import Samsung Health JSON/CSV Export Data
+ */
+export async function importSamsungHealthData(pacienteId, rawData) {
+  if (!pacienteId) throw new Error('ID do paciente é obrigatório.');
+  if (!rawData) throw new Error('Dados de exportação do Samsung Health não fornecidos.');
+
+  let parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+  const items = Array.isArray(parsed) ? parsed : (parsed.days || parsed.metrics || [parsed]);
+
+  const results = [];
+  for (const item of items) {
+    const saved = await saveWearableDailyMetric(pacienteId, {
+      data_metrica: item.date || item.data || item.data_metrica || new Date().toISOString().split('T')[0],
+      passos: item.steps || item.passos || 0,
+      distancia_metros: item.distance || item.distancia || 0,
+      calorias_ativas: item.active_calories || item.calorias_ativas || item.calories || 0,
+      calorias_totais: item.total_calories || item.calorias_totais || 0,
+      sono_minutos: item.sleep_minutes || item.sono_minutos || item.sleep_duration || 0,
+      sono_profundo_minutos: item.deep_sleep_minutes || item.sono_profundo || 0,
+      frequencia_cardiaca_repouso: item.resting_heart_rate || item.bpm_repouso || null,
+      frequencia_cardiaca_media: item.avg_heart_rate || item.bpm_medio || null,
+      agua_ml: item.water_ml || item.agua_ml || 0,
+      percentual_gordura: item.body_fat || item.percentual_gordura || null,
+      massa_muscular_kg: item.muscle_mass || item.massa_muscular || null,
+      dados_brutos: item
+    });
+    results.push(saved);
+  }
+
+  // Marcar como conectado
+  await connectWearable(pacienteId, { provedor: 'samsung_health', usuario_provedor_id: 'samsung_import_' + Date.now() });
+
+  return results;
 }
 
 // Export aliases for compatibility

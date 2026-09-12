@@ -26,7 +26,8 @@ import {
 import {
   getPlanosAlimentares,
   createPlanoAlimentar,
-  deletePlanoAlimentar
+  deletePlanoAlimentar,
+  getWearableDailyMetrics
 } from '../lib/neon';
 
 const DAYS_OF_WEEK = [
@@ -182,6 +183,29 @@ export default function MealPlanSection({ patient, user }) {
     setErrorModalInfo(null);
 
     try {
+      // Buscar telemetria recente de smartwatch/Samsung Health do paciente
+      let wearableTelemetry = null;
+      try {
+        if (patient?.id) {
+          const metrics = await getWearableDailyMetrics(patient.id, 7);
+          if (metrics && metrics.length > 0) {
+            const count = metrics.length;
+            wearableTelemetry = {
+              passos_media: Math.round(metrics.reduce((acc, m) => acc + (Number(m.passos) || 0), 0) / count),
+              calorias_ativas_media: Math.round(metrics.reduce((acc, m) => acc + (Number(m.calorias_ativas) || 0), 0) / count),
+              sono_horas_media: Number((metrics.reduce((acc, m) => acc + (m.sono_total_minutos ? Number(m.sono_total_minutos) / 60 : 0), 0) / count).toFixed(1)),
+              sono_score_medio: Math.round(metrics.reduce((acc, m) => acc + (Number(m.sono_score) || 0), 0) / count) || null,
+              bpm_repouso_medio: Math.round(metrics.reduce((acc, m) => acc + (Number(m.bpm_repouso) || 0), 0) / count) || null,
+              hidratacao_media_ml: Math.round(metrics.reduce((acc, m) => acc + (Number(m.agua_ml) || 0), 0) / count) || null,
+              percentual_gordura: metrics[0]?.percentual_gordura || null,
+              massa_muscular_kg: metrics[0]?.massa_muscular_kg || null
+            };
+          }
+        }
+      } catch (wErr) {
+        console.warn('Não foi possível carregar métricas de wearable para a IA:', wErr);
+      }
+
       const payload = {
         paciente: {
           nome: patient.nome,
@@ -205,7 +229,8 @@ export default function MealPlanSection({ patient, user }) {
           agua_litros: patient.agua_litros,
           exercicio_detalhes: patient.exercicio_detalhes,
           observacoes: patient.observacoes
-        }
+        },
+        wearable_telemetry: wearableTelemetry
       };
 
       const response = await fetch('/api/gerar-plano', {
